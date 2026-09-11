@@ -1,0 +1,9 @@
+# 忽略所有文件
+*
+
+# 不忽略 gitignore 本身
+!.gitignore
+
+# 只保留指定文件（按需修改）
+!ds991.html
+!Readme.md
