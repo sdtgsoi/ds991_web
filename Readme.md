@@ -24,6 +24,41 @@ The script refuses to copy a page that is empty, is missing its main elements, o
 has a JavaScript syntax error, so a half-saved file can never reach the
 published copy.
 
+## Publishing changes
+
+```bash
+# 1. edit ds991.html
+./sync.sh            # 2. regenerate index.html
+node tools/run_tests.js   # 3. (optional) run the suites
+git add -A && git commit -m "..."
+git push
+```
+
+Or run the checks as one command before pushing:
+
+```bash
+./tools/prepush.sh            # sync check + suites + "is the remote ahead?"
+./tools/prepush.sh --no-test  # skip the suites
+```
+
+`prepush.sh` reports three things and exits non-zero if any of them fails: the
+two html files agree, the suites pass, and the remote has no commits you are
+missing. That last one is what causes a `non-fast-forward` rejection.
+
+**Note on `git commit --amend`**: amending after a push rewrites the commit (a
+new hash, even with an identical message), so the next push is rejected. Amend
+freely *before* pushing; afterwards you need `git push --force-with-lease` and
+should expect to reconcile with the remote. See the git log/reflog if it happens
+again.
+
+## Repository layout
+
+`.gitignore` ignores everything by default and then white-lists the project files
+(`ds991.html`, `index.html`, `Readme.md`, `LICENSE`, `sync.sh`, `tools/`), so
+screenshots, scratch files and editor swap files cannot be committed by accident.
+Note that `*` also matches the `tools` directory itself, which is why both
+`!tools/` and `!tools/*` are needed to re-include its contents.
+
 ## Code map
 
 The page is one IIFE, ordered bottom-up so helpers exist before use. Each region
@@ -59,10 +94,19 @@ Regression suites (no dependencies, plain Node) — see `tools/README.md`:
 node tools/run_tests.js      # run everything
 ```
 
-`tools/shot.sh out.png "2 ADD 3"` renders the page with headless Chrome and
-replays a key sequence first (`?keys=`), which is handy for checking layout.
-`node tools/computed.js <selector>` prints an element's computed style, which is
-how CSS cascade/specificity problems get diagnosed.
+Layout/visual debugging helpers:
+
+```bash
+tools/shot.sh out.png "2 ADD 3"        # headless screenshot, replays a key sequence
+tools/shot.sh out.png "INTG 0 RIGHT 1" # (the page reads ?keys= on load)
+node tools/computed.js '.key[data-key="MENU"] .sl.right'   # browser computed style
+node tools/rects.js --keys "INTG XKEY" ".bigop" ".lim"     # element geometry
+```
+
+`shot.sh` exists because the Node suites check logic and markup but cannot see
+layout; `computed.js` and `rects.js` take the browser's own answer for style and
+geometry, which is the only reliable way to catch CSS cascade or overflow
+problems (a rule can look correct in the source and still lose on specificity).
 
 # TODO list:
 

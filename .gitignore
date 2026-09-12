@@ -1,11 +1,26 @@
-# 忽略所有文件
+# Ignore everything by default, then white-list the files that really belong to
+# the project. This keeps screenshots, scratch scripts, editor swap files and
+# local notes out of the repository.
 *
-
-# 不忽略 gitignore 本身
 !.gitignore
 
-# 只保留指定文件（按需修改）
+# --- project files -----------------------------------------------------------
 !ds991.html
 !index.html
 !Readme.md
+!LICENSE
 !sync.sh
+
+# --- development / test tools ------------------------------------------------
+# `*` also matches the tools directory itself, so the directory and its contents
+# each have to be re-included: a file inside an excluded directory cannot be
+# brought back by a pattern inside it.
+!tools/
+!tools/*
+
+# --- keep ignoring the usual junk --------------------------------------------
+# (these come after the white-list so they win)
+.DS_Store
+*.swp
+*.swo
+*~
