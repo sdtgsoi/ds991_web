@@ -146,7 +146,14 @@
   .sqrt{display:inline-flex;align-items:stretch;margin:0 1px;}
   .sqrt>.rad{font-size:1.25em;line-height:1;transform:translateY(-1px);}
   .sqrt>.body{border-top:2px solid currentColor;padding:1px 3px 0 3px;display:inline-flex;align-items:center;}
-  .sup{font-size:.58em;vertical-align:super;line-height:1;}
+  /* An exponent is raised with a relative offset rather than vertical-align:
+     the surrounding .math boxes are inline-FLEX, so a child with
+     vertical-align is a flex item and the property is simply ignored (which is
+     why the exponent used to sit in the middle on the right).
+     The size is an absolute .7em and nested exponents reset it, so "2^3",
+     "2^3^4", "2^3^4^5"... all print at the SAME size and only step up-right. */
+  .sup{font-size:.7em;vertical-align:baseline;line-height:1;position:relative;top:-.5em;}
+  .sup .sup{font-size:1em;}
   .sub{font-size:.62em;line-height:1;}
   .logbase{display:inline;white-space:nowrap;}
   .logbase .sub{vertical-align:-0.34em;}
@@ -1426,6 +1433,30 @@ function detachIntegral(n){
    them, so "the previous region" means "the one LEFT/RIGHT would have come
    from". The stack is rewound by one frame before entering the target slot, so
    a template nested inside the caller is left correctly. */
+/* DEL at the very left edge of a template's first region: there is nothing to
+   the left INSIDE the template, so take the template away and leave its
+   contents (for a power, the base) in the parent expression. The caret lands
+   just after those contents, so the boxed slot is gone with the wrapper. */
+function unwrapTemplate(node){
+  for(var d=stack.length-1;d>0;d--){
+    if(stack[d].node===node){
+      var parent=stack[d-1];
+      stack.length=d;
+      var idx=parent.arr.indexOf(node);
+      if(idx<0) return;
+      /* splice in every slot's contents so nothing typed is lost */
+      var ins=[];
+      var order=slotKeys(node)||[];
+      for(var j=0;j<order.length;j++){
+        var part=node[order[j]];
+        if(part && part.length) ins=ins.concat(part);
+      }
+      parent.arr.splice.apply(parent.arr,[idx,1].concat(ins));
+      parent.pos=tokenStart(parent.arr,idx)+arrDigits(ins);
+      return;
+    }
+  }
+}
 function delIntoPreviousSlot(node,fromSlot,order){
   var keys=order||slotKeys(node);
   var i=keys?keys.indexOf(fromSlot):-1;
@@ -1459,6 +1490,15 @@ function doDel(){
      "Empty" uses arrDigits(), not slotDigits(): slotDigits() forces a minimum
      of one so empty slots stay reachable by the caret, which would make every
      slot look non-empty here. */
+  /* --- power rules ----------------------------------------------------------
+     A power prints as base then exponent, so at the exponent's left edge there
+     is nothing to erase to the left of the caret yet; wrapping the caret in a
+     box would be silly, so DEL takes the exponent (and its box) away and leaves
+     the base behind. */
+  if(c.pos<=0 && c.node && c.node.t==="pow" && c.slot==="exp"){
+    unwrapTemplate(c.node);
+    return;
+  }
   var intNode=(c.node && c.node.t==="intg" && (c.slot==="body"||c.slot==="lower"||c.slot==="upper")) ? c.node : null;
   /* At offset 0 the caret sits BEFORE the node's first character, so tokenAt()
      cannot see it; the enclosing template is still known from the frame. */
@@ -3261,7 +3301,37 @@ function vectorAction(id){
 /* ============================ PHYSICAL KEYBOARD ============================ */
 /* Maps real keyboard events onto the same key ids the on-screen pad uses, so
    both routes end in dispatch(). */
-var KEYMAP={
+/* Two tables, because the two sources answer different questions.
+ *
+ * KEYCODE is looked up by event.code, i.e. by PHYSICAL key position. It is
+ * immune to the input method and to the keyboard layout, which is what makes
+ * the letter shortcuts ("s" for SHIFT, "m" for MENU, ...) and the digits keep
+ * working no matter which language is active. `code` carries no shift state, so
+ * a shifted digit arrives as the same code as the unshifted one - that is why
+ * the symbol column is kept separately.
+ *
+ * KEYSYM is looked up by event.key, i.e. by the CHARACTER produced. It covers
+ * the shifted symbols ("+" is Shift+"=" on a US layout, "^" is Shift+"6") and
+ * any symbol reachable on a non-US layout where it does not need shift at all.
+ *
+ * The code table wins, the character table is the fallback, so nothing that
+ * works today stops working. */
+var KEYCODE={
+  "Digit0":"0","Digit1":"1","Digit2":"2","Digit3":"3","Digit4":"4",
+  "Digit5":"5","Digit6":"6","Digit7":"7","Digit8":"8","Digit9":"9",
+  "Numpad0":"0","Numpad1":"1","Numpad2":"2","Numpad3":"3","Numpad4":"4",
+  "Numpad5":"5","Numpad6":"6","Numpad7":"7","Numpad8":"8","Numpad9":"9",
+  "NumpadDecimal":"DOT","NumpadAdd":"ADD","NumpadSubtract":"SUB",
+  "NumpadMultiply":"MUL","NumpadDivide":"FRAC",
+  "Enter":"EQUALS","NumpadEnter":"EQUALS","NumpadEqual":"EQUALS",
+  "Backspace":"DEL","Delete":"DEL","Escape":"AC",
+  "ArrowUp":"UP","ArrowDown":"DOWN","ArrowLeft":"LEFT","ArrowRight":"RIGHT",
+  "ShiftLeft":"SHIFT","ShiftRight":"SHIFT",
+  "KeyS":"SHIFT","KeyA":"ALPHA","KeyM":"MENU","KeyO":"OPTN","KeyC":"CALC",
+  "KeyX":"XKEY","KeyE":"ENG","KeyR":"SD",
+  "ContextMenu":"MENU"
+};
+var KEYSYM={
   "0":"0","1":"1","2":"2","3":"3","4":"4","5":"5","6":"6","7":"7","8":"8","9":"9",
   ".":"DOT",",":"DOT","+":"ADD","-":"SUB","*":"MUL","/":"FRAC","(":"LPAREN",")":"RPAREN",
   "Enter":"EQUALS","=":"EQUALS","Backspace":"DEL","Escape":"AC","Delete":"DEL",
@@ -3269,10 +3339,26 @@ var KEYMAP={
   "s":"SHIFT","a":"ALPHA","m":"MENU","o":"OPTN","c":"CALC","x":"XKEY",
   "e":"ENG","%":"ANS","^":"POW","!":"INV","r":"SD"
 };
+var KEYMAP=KEYSYM;   /* kept for the shortcut tests and for reference */
+
+/* Is a modifier synthesising a character right now? Pressing Shift+"6" yields
+   "^", and the app's own SHIFT is armed by the same press, so dispatching "6"
+   as well would be wrong: when shift is held the character is the intent. */
+function shiftTypedChar(e){
+  return e.shiftKey && !!(KEYSYM[e.key]||KEYSYM[String(e.key).toLowerCase()]);
+}
+function keyIdForEvent(e){
+  if(!shiftTypedChar(e)){
+    var byCode=KEYCODE[e.code];
+    if(byCode) return byCode;
+  }
+  return KEYSYM[e.key]||KEYSYM[String(e.key).toLowerCase()]||null;
+}
 document.addEventListener("keydown",function(e){
   if(e.metaKey||e.ctrlKey||e.altKey) return;
-  var k=e.key;
-  var id=KEYMAP[k]||KEYMAP[k.toLowerCase()];
+  /* mid-composition keys belong to the input method, not the calculator */
+  if(e.isComposing||e.keyCode===229) return;
+  var id=keyIdForEvent(e);
   if(!id) return;
   e.preventDefault();
   var el=document.querySelector('[data-key="'+id+'"]');

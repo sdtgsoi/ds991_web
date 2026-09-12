@@ -85,8 +85,27 @@ The `pos` of a cursor frame is a **digit offset**, not a token index — a token
 such as `"12"` spans two caret positions. That is what makes LEFT/RIGHT move one
 digit and UP/DOWN line the numerator up with the denominator.
 
-Keyboard shortcuts use the same dispatcher as the on-screen keys; notably `/`
-inserts a **fraction** template (not a division sign).
+Keyboard shortcuts go through the same dispatcher as the on-screen keys, so a
+shortcut behaves exactly like pressing the key:
+
+| key | acts as |
+|---|---|
+| `0`–`9` `.` `,` | digits, decimal point |
+| `+` `-` `*` | `+` `−` `×` |
+| **`/`** | **fraction template** (`⌐`), *not* division |
+| **`^`** | **power template** (`x^`) — the same key as the on-screen `x^` |
+| `!` | reciprocal (`x⁻¹`) |
+| `(` `)` | parentheses |
+| `%` | Ans |
+| `Enter` / `=` | `=` execute |
+| `Backspace` / `Delete` | DEL |
+| `Escape` | AC |
+| arrow keys | the d-pad |
+| `s` `a` | SHIFT / ALPHA (sticky, they arm the next key) |
+| `m` `o` `c` `x` `e` `r` | MENU, OPTN, CALC, `x`, ENG, S⇔D |
+
+Note that `s`/`a` arm SHIFT/ALPHA for the *next* key only, so `s` then `^`
+performs SHIFT+`x^`, which is the ⁿ√ template. Press `^` directly for a power.
 
 Regression suites (no dependencies, plain Node) — see `tools/README.md`:
 

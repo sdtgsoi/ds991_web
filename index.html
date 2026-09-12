@@ -146,7 +146,14 @@
   .sqrt{display:inline-flex;align-items:stretch;margin:0 1px;}
   .sqrt>.rad{font-size:1.25em;line-height:1;transform:translateY(-1px);}
   .sqrt>.body{border-top:2px solid currentColor;padding:1px 3px 0 3px;display:inline-flex;align-items:center;}
-  .sup{font-size:.58em;vertical-align:super;line-height:1;}
+  /* An exponent is raised with a relative offset rather than vertical-align:
+     the surrounding .math boxes are inline-FLEX, so a child with
+     vertical-align is a flex item and the property is simply ignored (which is
+     why the exponent used to sit in the middle on the right).
+     The size is an absolute .7em and nested exponents reset it, so "2^3",
+     "2^3^4", "2^3^4^5"... all print at the SAME size and only step up-right. */
+  .sup{font-size:.7em;vertical-align:baseline;line-height:1;position:relative;top:-.5em;}
+  .sup .sup{font-size:1em;}
   .sub{font-size:.62em;line-height:1;}
   .logbase{display:inline;white-space:nowrap;}
   .logbase .sub{vertical-align:-0.34em;}
@@ -1426,6 +1433,30 @@ function detachIntegral(n){
    them, so "the previous region" means "the one LEFT/RIGHT would have come
    from". The stack is rewound by one frame before entering the target slot, so
    a template nested inside the caller is left correctly. */
+/* DEL at the very left edge of a template's first region: there is nothing to
+   the left INSIDE the template, so take the template away and leave its
+   contents (for a power, the base) in the parent expression. The caret lands
+   just after those contents, so the boxed slot is gone with the wrapper. */
+function unwrapTemplate(node){
+  for(var d=stack.length-1;d>0;d--){
+    if(stack[d].node===node){
+      var parent=stack[d-1];
+      stack.length=d;
+      var idx=parent.arr.indexOf(node);
+      if(idx<0) return;
+      /* splice in every slot's contents so nothing typed is lost */
+      var ins=[];
+      var order=slotKeys(node)||[];
+      for(var j=0;j<order.length;j++){
+        var part=node[order[j]];
+        if(part && part.length) ins=ins.concat(part);
+      }
+      parent.arr.splice.apply(parent.arr,[idx,1].concat(ins));
+      parent.pos=tokenStart(parent.arr,idx)+arrDigits(ins);
+      return;
+    }
+  }
+}
 function delIntoPreviousSlot(node,fromSlot,order){
   var keys=order||slotKeys(node);
   var i=keys?keys.indexOf(fromSlot):-1;
@@ -1459,6 +1490,15 @@ function doDel(){
      "Empty" uses arrDigits(), not slotDigits(): slotDigits() forces a minimum
      of one so empty slots stay reachable by the caret, which would make every
      slot look non-empty here. */
+  /* --- power rules ----------------------------------------------------------
+     A power prints as base then exponent, so at the exponent's left edge there
+     is nothing to erase to the left of the caret yet; wrapping the caret in a
+     box would be silly, so DEL takes the exponent (and its box) away and leaves
+     the base behind. */
+  if(c.pos<=0 && c.node && c.node.t==="pow" && c.slot==="exp"){
+    unwrapTemplate(c.node);
+    return;
+  }
   var intNode=(c.node && c.node.t==="intg" && (c.slot==="body"||c.slot==="lower"||c.slot==="upper")) ? c.node : null;
   /* At offset 0 the caret sits BEFORE the node's first character, so tokenAt()
      cannot see it; the enclosing template is still known from the frame. */

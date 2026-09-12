@@ -35,7 +35,32 @@ function boot(){
   vm.createContext(ctx);vm.runInContext(pageSrc,ctx,{filename:"p.js"});
   return {calc:ctx.__calc,screen:()=>cache.screen.innerHTML,padTop:cache.padTop};
 }
-const html=()=>null;
+/* like boot(), but also returns a function that fires the page's own keydown
+   listener, so the physical-keyboard shortcuts can be exercised end to end */
+function bootWithKeyboard(){
+  const cache={};
+  const padMain=new El("div");
+  cache.padMain=padMain; cache.padTop=new El("div"); cache.calc=new El("div");
+  padMain.querySelectorAll=(s)=>(/keycell/.test(s)?[]:[]);
+  let listener=null;
+  const doc={
+    getElementById:(id)=>cache[id]||(cache[id]=new El("div")),
+    createElement:(t)=>new El(t),
+    querySelector:()=>null,
+    querySelectorAll:()=>[],
+    addEventListener:(t,f)=>{ if(t==="keydown") listener=f; },
+    body:new El("body"),
+  };
+  const ctx={console,setTimeout,clearTimeout,Math,JSON,Date,isFinite,isNaN,parseInt,parseFloat,String,Number,Array,Object,document:doc};
+  ctx.window=ctx; ctx.globalThis=ctx;
+  vm.createContext(ctx);
+  vm.runInContext(pageSrc,ctx,{filename:"ds991-keyboard.js"});
+  return {
+    calc:ctx.__calc,
+    keydown:(k)=>listener({key:k,preventDefault(){},metaKey:false,ctrlKey:false,altKey:false}),
+  };
+}
+
 let fail=0,pass=0;
 function check(label,got,want){
   const ok=got===want; ok?pass++:fail++;
@@ -148,6 +173,24 @@ console.log("\n--- leaving the answer view to edit ---");
   check("DEL after the integral edits it, caret back", hasCaret(exprLine(c.screen())), true);
   check("DEL after the integral removed the upper limit",
     String(c.calc.getExpr()[0].upper.length), "0");
+}
+
+console.log("\n--- physical keyboard shortcuts ---");
+{
+  const src=fs.readFileSync(path.join(__dirname,"..","ds991.html"),"utf8");
+  const map=/var KEYMAP=\{([\s\S]*?)\};/.exec(src)[1];
+  const entry=(k)=>{ const m=new RegExp('"'+k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+'":"([A-Z0-9]+)"').exec(map); return m?m[1]:null; };
+  check('"^" maps to the power template', entry("^"), "POW");
+  check('"/" maps to the fraction template', entry("/"), "FRAC");
+  check('"!" maps to the reciprocal', entry("!"), "INV");
+  check("dispatch knows the POW key", /case "POW":/.test(src), true);
+}
+{
+  /* drive the real keydown listener so the mapping is exercised end to end */
+  const {calc,keydown}=bootWithKeyboard();
+  ["2","^","3"].forEach(k=>keydown(k));
+  calc.dispatch("EQUALS");
+  check("^ types a power and it evaluates", calc.evalExpr(), 8);
 }
 
 console.log("\n--- item 4: the \"/\" key is a fraction, not a division ---");
@@ -307,6 +350,41 @@ console.log("\n--- integral DEL rules ---");
   ["INTG","1","2","DEL"].forEach(k=>c2.calc.dispatch(k));
   check("DEL elsewhere in the integrand just edits it",
     c2.calc.getExpr()[0].body.map(n=>n.v).join(""), "1");
+}
+
+console.log("\n--- exponent rendering and DEL ---");
+{
+  const src=fs.readFileSync(path.join(__dirname,"..","ds991.html"),"utf8");
+  /* the exponent is raised with a relative offset, NOT vertical-align: the
+     surrounding .math boxes are inline-flex, so vertical-align is ignored on
+     their children (it used to leave the exponent centred on the right) */
+  check("exponent uses an offset, not vertical-align",
+    /\.sup\{[^}]*position:relative[^}]*top:-/.test(src), true);
+  check("exponent is smaller than the base", /\.sup\{[^}]*font-size:\.7em/.test(src), true);
+  check("nested exponents reset to the same size",
+    /\.sup \.sup\{font-size:1em;\}/.test(src), true);
+}
+{
+  /* the exponent box must go when DEL is pressed with an empty exponent */
+  const {calc}=boot();
+  ["2","POW"].forEach(k=>calc.dispatch(k));
+  calc.dispatch("DEL");
+  check("DEL with an empty exponent removes the power wrapper",
+    JSON.stringify(calc.getExpr().map(n=>n.t)), '["num"]');
+  check("the base survives", calc.getExpr()[0].v, "2");
+
+  const b=boot();
+  ["2","POW","3","DEL"].forEach(k=>b.calc.dispatch(k));
+  check("first DEL clears the exponent digit",
+    JSON.stringify(b.calc.getExpr()[0].exp.length), "0");
+  b.calc.dispatch("DEL");
+  check("second DEL removes the wrapper too",
+    JSON.stringify(b.calc.getExpr().map(n=>n.t)), '["num"]');
+
+  const c=boot();
+  ["2","POW","3","4","DEL","DEL","DEL"].forEach(k=>c.calc.dispatch(k));
+  check("multi-digit exponent: digits first, then the wrapper",
+    JSON.stringify(c.calc.getExpr().map(n=>n.t)), '["num"]');
 }
 
 console.log("\n--- item 5: log-base placeholder boxes ---");
