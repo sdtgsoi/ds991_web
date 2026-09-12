@@ -124,6 +124,8 @@
   .frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 2px;font-size:.82em;line-height:1.05;}
   .frac>.num{border-bottom:2px solid currentColor;padding:0 3px;}
   .frac>.den{padding:0 3px;}
+  .mixed{display:inline-flex;align-items:center;}
+  .frac>.num:empty,.frac>.den:empty{min-height:.8em;}
   .sqrt{display:inline-flex;align-items:stretch;margin:0 1px;}
   .sqrt>.rad{font-size:1.25em;line-height:1;transform:translateY(-1px);}
   .sqrt>.body{border-top:2px solid currentColor;padding:1px 3px 0 3px;display:inline-flex;align-items:center;}
@@ -539,14 +541,47 @@ function num2sup(n){
   return String(n).split("").map(function(c){return map[c]||c;}).join("");
 }
 
+var CARET='<span class="cursor"></span>';
+/* draw one token, splicing the caret in at the requested digit offset */
+function renderNodeAt(n,at){
+  if(at===undefined||at===null) return renderNode(n);
+  if(n.t==="num"){
+    var s=String(n.v);
+    return esc(s.slice(0,at))+CARET+esc(s.slice(at));
+  }
+  if(at<=0) return CARET+renderNode(n);
+  if(at>=digitsIn(n)) return renderNode(n)+CARET;
+  if(n.t==="paren"||n.t==="abs"){
+    if(at===1) return '<span class="math paren">'+CARET+'('+renderArr(n.body)+')</span>';
+    if(at>=2+(n.body?arrDigits(n.body):0)) return '<span class="math paren">('+renderArr(n.body)+')'+CARET+'</span>';
+  }
+  return renderNode(n)+CARET;
+}
 function renderArr(arr){
   var curArr=cur().arr, curPos=cur().pos;
-  var out="";
-  for(var i=0;i<=arr.length;i++){
-    if(arr===curArr && curPos===i && !S.menu && !S.error) out+='<span class="cursor"></span>';
-    if(i<arr.length) out+=renderNode(arr[i]);
+  var isCur=(arr===curArr && !S.menu && !S.error);
+  var out="", t=0;
+  for(var i=0;i<arr.length;i++){
+    var nd=digitsIn(arr[i]);
+    if(isCur && curPos>=t && curPos<t+nd) out+=renderNodeAt(arr[i],curPos-t);
+    else out+=renderNode(arr[i]);
+    t+=nd;
   }
+  if(isCur && curPos>=t) out+=CARET;
   return out;
+}
+/* an empty template slot shows a placeholder box; the box disappears while
+   the cursor is inside that slot so it does not overlap the caret */
+function slotEditing(arr){
+  return arr===cur().arr && !S.menu && !S.error;
+}
+function slotCursor(arr){
+  return slotEditing(arr)?'<span class="cursor"></span>':"";
+}
+function slotOrBox(arr,boxCls,extra){
+  if(arr.length) return renderArr(arr);      /* renderArr also emits the caret */
+  if(slotEditing(arr)) return CARET;         /* empty slot being edited */
+  return '<span class="box'+(boxCls?" "+boxCls:"")+'"'+(extra||"")+'></span>';
 }
 function renderNode(n){
   if(!n) return "";
@@ -556,19 +591,19 @@ function renderNode(n){
     case "variable": return '<span class="math">'+esc(n.name)+'</span>';
     case "const": return constSym(n.name);
     case "post": return renderNode({t:"dummy"})+esc(n.v);
-    case "func": return '<span class="math">'+fnSym(n.name)+'('+renderArr(n.arg)+')</span>';
-    case "paren": return '<span class="math paren">('+renderArr(n.body)+')</span>';
-    case "abs": return '<span class="math">|'+renderArr(n.body)+'|</span>';
-    case "frac": return '<span class="math frac"><span class="num">'+renderArr(n.num)+'</span><span class="den">'+renderArr(n.den)+'</span></span>';
-    case "mixed": return '<span class="math">'+renderArr(n.whole)+'</span><span class="math frac" style="font-size:.85em"><span class="num">'+renderArr(n.num)+'</span><span class="den">'+renderArr(n.den)+'</span></span>';
-    case "pow": return '<span class="math">'+renderArr(n.base)+'<span class="sup">'+renderArr(n.exp)+'</span></span>';
-    case "sqrt": return '<span class="math sqrt"><span class="rad">\u221a</span><span class="body">'+renderArr(n.body)+'</span></span>';
-    case "root": return '<span class="math sqrt"><span class="sup">'+renderArr(n.n)+'</span><span class="rad">\u221a</span><span class="body">'+renderArr(n.body)+'</span></span>';
-    case "logbase": return '<span class="logbase">log<span class="sub">'+renderArr(n.base)+'</span><span class="lbp">('+renderArr(n.arg)+')</span></span>';
-    case "intg": return '<span class="math bigop"><span class="lim"><span>'+renderArr(n.upper)+'</span><span>'+renderArr(n.lower)+'</span></span><span class="sym">\u222b</span></span><span class="math">'+renderArr(n.body)+'</span><span class="math"> d'+esc((n.var||"X").toLowerCase())+'</span>';
-    case "deriv": return '<span class="math bigop"><span class="dydx"><span>d</span><span class="bar"></span><span>d'+esc((n.var||"X").toLowerCase())+'</span></span>('+renderArr(n.body)+')</span><span class="math" style="font-size:.8em">&nbsp;|' + renderArr(n.at) + '</span>';
-    case "sum": return '<span class="math bigop"><span class="lim"><span>'+renderArr(n.upper)+'</span><span>'+renderArr(n.lower)+'</span></span><span class="sym">\u03a3</span></span>('+renderArr(n.body)+')';
-    case "prod": return '<span class="math bigop"><span class="lim"><span>'+renderArr(n.upper)+'</span><span>'+renderArr(n.lower)+'</span></span><span class="sym">\u03a0</span></span>('+renderArr(n.body)+')';
+    case "func": return '<span class="math">'+fnSym(n.name)+'('+slotOrBox(n.arg)+')</span>';
+    case "paren": return '<span class="math paren">('+slotOrBox(n.body)+')</span>';
+    case "abs": return '<span class="math">|'+slotOrBox(n.body)+'|</span>';
+    case "frac": return '<span class="math frac"><span class="num">'+slotOrBox(n.num)+'</span><span class="den">'+slotOrBox(n.den)+'</span></span>';
+    case "mixed": return '<span class="math mixed">'+slotOrBox(n.whole)+'<span class="math frac" style="font-size:.9em"><span class="num">'+slotOrBox(n.num)+'</span><span class="den">'+slotOrBox(n.den)+'</span></span></span>';
+    case "pow": return '<span class="math">'+slotOrBox(n.base)+'<span class="sup">'+slotOrBox(n.exp)+'</span></span>';
+    case "sqrt": return '<span class="math sqrt"><span class="rad">\u221a</span><span class="body">'+slotOrBox(n.body)+'</span></span>';
+    case "root": return '<span class="math sqrt"><span class="sup">'+slotOrBox(n.n)+'</span><span class="rad">\u221a</span><span class="body">'+slotOrBox(n.body)+'</span></span>';
+    case "logbase": return '<span class="logbase">log<span class="sub">'+slotOrBox(n.base)+'</span><span class="lbp">('+slotOrBox(n.arg)+')</span></span>';
+    case "intg": return '<span class="math bigop"><span class="lim"><span>'+slotOrBox(n.upper)+'</span><span>'+slotOrBox(n.lower)+'</span></span><span class="sym">\u222b</span></span><span class="math">'+slotOrBox(n.body)+'</span><span class="math"> d'+esc((n.var||"X").toLowerCase())+'</span>';
+    case "deriv": return '<span class="math bigop"><span class="dydx"><span>d</span><span class="bar"></span><span>d'+esc((n.var||"X").toLowerCase())+'</span></span>('+slotOrBox(n.body)+')</span><span class="math" style="font-size:.8em">&nbsp;|' + slotOrBox(n.at) + '</span>';
+    case "sum": return '<span class="math bigop"><span class="lim"><span>'+slotOrBox(n.upper)+'</span><span>'+slotOrBox(n.lower)+'</span></span><span class="sym">\u03a3</span></span>('+slotOrBox(n.body)+')';
+    case "prod": return '<span class="math bigop"><span class="lim"><span>'+slotOrBox(n.upper)+'</span><span>'+slotOrBox(n.lower)+'</span></span><span class="sym">\u03a0</span></span>('+slotOrBox(n.body)+')';
   }
   return "";
 }
@@ -687,51 +722,105 @@ function formatComplex(z){
 }
 
 /* ============================ EDITING ============================ */
+/* A frame's pos is a DIGIT OFFSET into its array, not a token index: a number
+   token such as "12" spans two caret positions, so ←/→ move one digit at a
+   time and ⌐/▷ can line the caret up in the numerator and denominator alike.
+   These helpers convert between the two. */
+function digitsIn(n){
+  if(!n) return 0;
+  if(n.t==="num") return Math.max(1,String(n.v).length);
+  var tn=n.t;
+  if(tn==="variable"||tn==="const"||tn==="post"||tn==="op") return 1;
+  if(tn==="paren"||tn==="abs") return 2+(n.body?arrDigits(n.body):0);
+  if(tn==="func") return 1+(n.arg?arrDigits(n.arg):0)+1;
+  if(tn==="frac") return (n.num?arrDigits(n.num):0)+(n.den?arrDigits(n.den):0)+1;
+  if(tn==="mixed") return (n.whole?arrDigits(n.whole):0)+(n.num?arrDigits(n.num):0)+(n.den?arrDigits(n.den):0)+1;
+  if(tn==="logbase") return 4+(n.base?arrDigits(n.base):0)+(n.arg?arrDigits(n.arg):0)+2;
+  if(tn==="sqrt") return 1+(n.body?arrDigits(n.body):0);
+  if(tn==="root") return 1+(n.n?arrDigits(n.n):0)+1+(n.body?arrDigits(n.body):0);
+  if(tn==="intg") return 1+(n.upper?arrDigits(n.upper):0)+(n.lower?arrDigits(n.lower):0)+1+(n.body?arrDigits(n.body):0)+2;
+  if(tn==="deriv") return 4+(n.at?arrDigits(n.at):0)+1+(n.body?arrDigits(n.body):0)+1+(n.at?arrDigits(n.at):0);
+  if(tn==="sum"||tn==="prod") return 1+(n.upper?arrDigits(n.upper):0)+(n.lower?arrDigits(n.lower):0)+1+(n.body?arrDigits(n.body):0)+1;
+  return 1;
+}
+function arrDigits(a){ var t=0; for(var k=0;k<a.length;k++) t+=digitsIn(a[k]); return t; }
+function tokenStart(arr,j){ var t=0; for(var k=0;k<j;k++) t+=digitsIn(arr[k]); return t; }
+/* Digit-offset -> index of the token the caret is STRICTLY inside.
+   It reports -1 whenever the offset falls on a token boundary. */
+function tokenAtPos(arr,pos){
+  if(pos<=0) return -1;
+  var t=0;
+  for(var k=0;k<arr.length;k++){
+    var d=digitsIn(arr[k]);
+    if(pos<t+d) return pos>t?k:-1;
+    t+=d;
+  }
+  return -1;
+}
+function offsetInToken(arr,pos){
+  var t=0;
+  for(var k=0;k<arr.length;k++){
+    var d=digitsIn(arr[k]);
+    if(pos<=t+d) return pos-t;
+    t+=d;
+  }
+  return arr.length?digitsIn(arr[arr.length-1]):0;
+}
+/* token whose digits the caret sits inside; null on a boundary or past the end */
+function tokenAt(arr,pos){
+  var i=tokenAtPos(arr,pos);
+  return (i>=0&&i<arr.length)?arr[i]:null;
+}
+/* GAP index: how many tokens lie completely left of the caret. Inserting a
+   token at "the caret" means splicing at this index. For "12" with the caret
+   after it this is 1, which is exactly where a following "+" belongs. */
+function insertIndex(arr,pos){
+  if(pos<=0) return 0;
+  var t=0;
+  for(var k=0;k<arr.length;k++){
+    var d=digitsIn(arr[k]);
+    if(pos<t+d) return k;
+    t+=d;
+  }
+  return arr.length;
+}
+/* token immediately left of the caret; when the caret is just inside the tail
+   of a factor node it reports that node, never a token nested within it */
+function leftToken(arr,pos){
+  var i=insertIndex(arr,pos);
+  return i>0?arr[i-1]:null;
+}
+/* last token, but only when the caret sits exactly at its trailing edge */
+function tokenEnd(arr,pos){
+  if(!arr.length || pos<arrDigits(arr)) return null;
+  var t=arr[arr.length-1];
+  return (offsetInToken(arr,pos)===digitsIn(t))?t:null;
+}
+/* split "12" so a token can be inserted between its digits */
+function splitNumberAt(arr,idx,at){
+  var n=arr[idx];
+  if(!n||n.t!=="num") return;
+  var str=String(n.v);
+  if(at<=0||at>=str.length) return;
+  arr.splice(idx,1,node("num",{v:str.slice(0,at)}),node("num",{v:str.slice(at)}));
+}
 function resetCursor(){ stack=[{arr:root,pos:0}]; }
 function clearInput(){ root.length=0; resetCursor(); S.resultShown=false; S.error=null; }
 function startFreshIfResult(){
   if(S.resultShown){ root.length=0; resetCursor(); S.resultShown=false; }
 }
-function ins(n){ var c=cur(); c.arr.splice(c.pos,0,n); c.pos++; }
+function ins(n){
+  var c=cur(), i=insertIndex(c.arr,c.pos);
+  if(i>0) splitNumberAt(c.arr,i-1,offsetInToken(c.arr,c.pos));
+  i=insertIndex(c.arr,c.pos);            /* splitting adds a token */
+  c.arr.splice(i,0,n);
+  c.pos=tokenStart(c.arr,i)+digitsIn(n);
+}
 function enter(node_,slot){
   stack.push({arr:node_[slot],pos:0,node:node_,slot:slot});
 }
 function enterEnd(node_,slot){
-  stack.push({arr:node_[slot],pos:node_[slot].length,node:node_,slot:slot});
-}
-function firstSlot(n){
-  if(!n) return null;
-  if(n.t==="frac") return "num";
-  if(n.t==="mixed") return "whole";
-  if(n.t==="pow") return n.base.length?"exp":"base";
-  if(n.t==="sqrt") return "body";
-  if(n.t==="root") return n.n.length?"body":"n";
-  if(n.t==="paren") return "body";
-  if(n.t==="abs") return "body";
-  if(n.t==="func") return "arg";
-  if(n.t==="logbase") return n.base.length?"arg":"base";
-  if(n.t==="intg") return "lower";
-  if(n.t==="deriv") return "body";
-  if(n.t==="sum") return "lower";
-  if(n.t==="prod") return "lower";
-  return null;
-}
-function lastSlot(n){
-  if(!n) return null;
-  if(n.t==="frac") return "den";
-  if(n.t==="mixed") return "den";
-  if(n.t==="pow") return "exp";
-  if(n.t==="sqrt") return "body";
-  if(n.t==="root") return "body";
-  if(n.t==="paren") return "body";
-  if(n.t==="abs") return "body";
-  if(n.t==="func") return "arg";
-  if(n.t==="logbase") return "arg";
-  if(n.t==="intg") return "body";
-  if(n.t==="deriv") return "at";
-  if(n.t==="sum") return "body";
-  if(n.t==="prod") return "body";
-  return null;
+  stack.push({arr:node_[slot],pos:arrDigits(node_[slot]),node:node_,slot:slot});
 }
 function slotKeys(n){
   if(!n) return null;
@@ -752,21 +841,72 @@ function slotKeys(n){
   }
   return null;
 }
+/* "pow" is entered through its exponent once a base has been captured,
+   "root"/"logbase" through the body once the index/base has been entered */
+function autoSlot(n){
+  var ks=slotKeys(n);
+  if(!ks) return null;
+  if(n.t==="pow") return n.base.length?"exp":"base";
+  if(n.t==="root") return n.n.length?"body":"n";
+  if(n.t==="logbase") return n.base.length?"arg":"base";
+  return ks[0];
+}
+function firstSlot(n){ return autoSlot(n); }
+function lastSlot(n){
+  var ks=slotKeys(n);
+  return ks?ks[ks.length-1]:null;
+}
 function isFactor(n){
   return n && ["num","variable","const","func","frac","mixed","pow","sqrt","root","paren","abs","post","logbase","intg","deriv","sum","prod"].indexOf(n.t)>=0;
 }
 function takeOperand(){
+  var c=cur(), n=leftToken(c.arr,c.pos);
+  if(!n || !isFactor(n)) return null;
+  var j=c.arr.indexOf(n);
+  c.arr.splice(j,1);
+  c.pos=tokenStart(c.arr,j);       /* keep the caret on the spot it vacated */
+  return n;
+}
+/* The number the user has just typed. On the real calculator the fraction key
+   turns that number into the numerator, so "7" then the fraction key gives 7/□.
+   The caret may sit before a trailing operator (12+34 with the caret after 34),
+   so fall back to the second-to-last element, not only the last one. */
+function takeTrailingNumber(){
   var c=cur();
-  if(c.pos>0 && isFactor(c.arr[c.pos-1])) return c.arr.splice(c.pos-1,1)[0];
-  return null;
+  function numAt(i){ var n=c.arr[i]; return n && n.t==="num" && !n.base; }
+  function digit(n){ return n.v.length===1 && n.v>="0" && n.v<="9"; }
+  var j=insertIndex(c.arr,c.pos);
+  var i=j-1;
+  if(i<0 || !numAt(i)) return null;
+  while(i>0 && numAt(i-1) && digit(c.arr[i-1])) i--;
+  var num=c.arr.splice(i,1)[0];
+  c.pos=tokenStart(c.arr,i);
+  return num;
+}
+/* leave the template the cursor is inside, landing just before/after the
+   template node in its parent frame. Unlike doLeft()/doRight() this always
+   leaves, so an empty slot cannot swallow the caret. */
+function leaveField(dir){
+  var f=stack.pop(), p=cur(), idx=p.arr.indexOf(f.node);
+  if(idx<0) idx=0;
+  p.pos=tokenStart(p.arr,idx)+(dir<0?0:digitsIn(f.node));
 }
 function doLeft(){
   var c=cur();
   if(c.pos>0){
-    var pv=c.arr[c.pos-1];
-    var sk=lastSlot(pv);
-    if(sk){ c.pos--; enterEnd(pv,sk); }
-    else c.pos--;
+    var j=insertIndex(c.arr,c.pos)-1;         /* token just left of the caret */
+    var host=tokenAt(c.arr,c.pos);            /* the caret is inside this one */
+    if(host===null && j>=0) host=c.arr[j];    /* or at its trailing edge */
+    if(host && host.t==="num" && offsetInToken(c.arr,c.pos)>0){
+      c.pos--; return;                        /* one digit back within a number */
+    }
+    if(j>=0){
+      var pv=c.arr[j], sk=lastSlot(pv);
+      if(sk){ enterEnd(pv,sk); return; }    /* step into the template */
+      c.pos=tokenStart(c.arr,j);
+      return;
+    }
+    c.pos=0;
     return;
   }
   if(stack.length>1){
@@ -774,21 +914,25 @@ function doLeft(){
     var keys=slotKeys(f.node);
     if(keys){
       var ki=keys.indexOf(f.slot);
-      if(ki>0){ stack.pop(); enterEnd(f.node,keys[ki-1]); return; }
+      if(ki>0){ stack.pop(); enterEnd(f.node,keys[ki-1]); return; }  /* previous slot */
     }
-    stack.pop();
-    var p=cur();
-    var idx=p.arr.indexOf(f.node);
-    p.pos=idx<0?0:idx;
+    leaveField(-1);
   }
 }
 function doRight(){
   var c=cur();
-  if(c.pos<c.arr.length){
-    var nx=c.arr[c.pos];
-    var sk=firstSlot(nx);
-    if(sk){ c.pos++; enter(nx,sk); }
-    else c.pos++;
+  var total=arrDigits(c.arr);
+  if(c.pos<total){
+    var i=insertIndex(c.arr,c.pos);           /* gap the caret sits in */
+    var host=tokenAt(c.arr,c.pos);
+    if(host===null && i>0) host=c.arr[i-1];   /* or at its trailing edge */
+    if(host && host.t==="num" && offsetInToken(c.arr,c.pos)<digitsIn(host)){
+      c.pos++; return;                        /* one digit on within a number */
+    }
+    var nx=(i<c.arr.length)?c.arr[i]:null;
+    var sk=nx?firstSlot(nx):null;
+    c.pos=Math.min(tokenStart(c.arr,i)+(nx?digitsIn(nx):0),arrDigits(c.arr));
+    if(sk) enter(nx,sk);
     return;
   }
   if(stack.length>1){
@@ -798,50 +942,134 @@ function doRight(){
       var ki=keys.indexOf(f.slot);
       if(ki>=0 && ki<keys.length-1){ stack.pop(); enter(f.node,keys[ki+1]); return; }
     }
-    stack.pop();
-    var p=cur();
-    var idx=p.arr.indexOf(f.node);
-    p.pos=(idx<0?0:idx)+1;
+    leaveField(1);
   }
+}
+/* DEL removes the single digit immediately left of the caret, which is also
+   what "the caret is just past the fraction" should do: the right-hand slot is
+   re-entered and its last digit removed. */
+/* Delete the single digit left of the caret. Returns the caret offset to use,
+   or -1 when there was nothing to delete. */
+function delDigitIn(arr,pos){
+  var at=offsetInToken(arr,pos);
+  var j=insertIndex(arr,pos)-1;
+  var host=tokenAt(arr,pos);
+  if(host===null && j>=0) host=arr[j];        /* caret at that token's edge */
+  /* (a) still digits left inside this number: drop just the one character */
+  if(host && host.t==="num" && at>0){
+    var str=String(host.v);
+    host.v=str.slice(0,at-1)+str.slice(at);
+    if(host.v===""){ var hi=arr.indexOf(host); arr.splice(hi,1); return tokenStart(arr,hi); }
+    return pos-1;
+  }
+  /* (b) otherwise drop the whole token to the left of the caret */
+  if(j>=0){
+    arr.splice(j,1);
+    return tokenStart(arr,j);
+  }
+  return -1;
 }
 function doDel(){
   var c=cur();
   if(c.pos>0){
-    var pv=c.arr[c.pos-1];
-    if(pv && pv.t==="num" && String(pv.v).length>1){
-      pv.v=String(pv.v).slice(0,-1);
+    /* caret sitting just right of a template: step back inside it and delete
+       its last digit, so "⌐12/34 |" + DEL leaves 12/3 instead of dropping the
+       whole fraction */
+    var edge=tokenEnd(c.arr,c.pos);
+    var ek=edge?lastSlot(edge):null;
+    if(ek){
+      enterEnd(edge,ek);
+      var ef=cur(), nep=delDigitIn(ef.arr,ef.pos);
+      if(nep>=0) ef.pos=nep; else leaveField(1);
       return;
     }
-    c.arr.splice(c.pos-1,1); c.pos--; return;
+    var np=delDigitIn(c.arr,c.pos);
+    if(np>=0) c.pos=np;
+    return;
   }
-  if(stack.length>1){
-    var f=stack.pop(); var p=cur();
-    var idx=p.arr.indexOf(f.node);
-    if(idx>=0) p.arr.splice(idx,1);
-    p.pos=idx<0?0:idx;
+  if(stack.length<=1) return;
+  /* at the head of a template slot: step back into the previous slot and
+     delete its last digit, instead of dropping the whole template */
+  for(var i=stack.length-1;i>0;i--){
+    var keys=slotKeys(stack[i].node);
+    var ki=keys?keys.indexOf(stack[i].slot):-1;
+    if(ki<=0) continue;                       /* not a slot, or the first one */
+    var tnode=stack[i].node;
+    stack.length=i;                           /* drop the frames inside the template */
+    enterEnd(tnode,keys[ki-1]);
+    var f=cur();
+    if(f.pos>0){ var np2=delDigitIn(f.arr,f.pos); if(np2>=0) f.pos=np2; }
+    return;
   }
+  var ff=stack.pop(), p=cur();
+  var idx=p.arr.indexOf(ff.node);
+  if(idx>=0){ p.arr.splice(idx,1); p.pos=tokenStart(p.arr,idx); }
+  else p.pos=0;
+}
+/* UP / DOWN keep the digit offset when they move between the slots of the
+   template the cursor is inside, so ⌐12 with the caret after the "1" lands
+   after the first digit of the denominator too. At either end of the slot list
+   they step out of the template; false means "no enclosing template" so the
+   caller can fall back to history recall. */
+function doField(dir){
+  var c=cur(), keys=slotKeys(c.node);
+  var i=keys?keys.indexOf(c.slot):-1;
+  if(i>=0){
+    var j=i+dir;
+    if(j<0 || j>=keys.length){
+      if(stack.length>1){ leaveField(dir); return true; }
+      return false;
+    }
+    var want=c.pos;                        /* digit offset to keep across slots */
+    stack.pop(); enter(c.node,keys[j]);
+    var t=cur();
+    t.pos=Math.max(0,Math.min(want,arrDigits(t.arr)));
+    return true;
+  }
+  return false;
 }
 function doAC(){
   clearInput();
 }
 
 /* input tokens */
+/* the caret is at the end of the array AND just after a number token: that
+   number is the one further digits should extend */
+function caretAtEnd(c){ return c.pos>=arrDigits(c.arr); }
+/* the number token whose trailing edge the caret is at, if it is the last one */
+function numToExtend(c){
+  if(!caretAtEnd(c)) return null;
+  var t=tokenEnd(c.arr,c.pos);
+  return (t && t.t==="num")?t:null;
+}
 function inputDigit(d){
   startFreshIfResult();
   var c=cur();
-  var pv=c.arr[c.pos-1];
-  if(pv && pv.t==="num" && c.pos===c.arr.length){
+  var pv=numToExtend(c);
+  if(pv){
     pv.v=(pv.v==="0")?d:(pv.v+d);
+    c.pos++;
   } else {
     ins(T_num(d));
   }
+  maybeAutoAdvanceFraction(c);
+}
+/* After the numerator of a fraction has been filled by a number that was
+   already typed ("7 ⌐"), move the caret down into the denominator the way the
+   real calculator does. A fresh "⌐" keeps the caret in the numerator so a
+   multi-digit numerator can still be typed, and a mixed fraction keeps it in
+   the integer slot so UP/DOWN can visit every slot. */
+function maybeAutoAdvanceFraction(c){
+  if(!c.node || !caretAtEnd(c)) return;
+  var n=c.node;
+  if(n.t==="frac" && c.slot==="num" && n._absorbed && !n.den.length){ stack.pop(); enter(n,"den"); }
 }
 function inputBaseDigit(g){
   startFreshIfResult();
   var c=cur();
-  var pv=c.arr[c.pos-1];
-  if(pv && pv.t==="num" && pv.base===S.base && c.pos===c.arr.length){
-    pv.v+=g;
+  var pv=numToExtend(c);
+  if(pv && pv.base===S.base){
+    pv.v+=g; c.pos++;
   } else {
     ins({t:"num",v:g,base:S.base});
   }
@@ -849,16 +1077,17 @@ function inputBaseDigit(g){
 function inputDot(){
   startFreshIfResult();
   var c=cur();
-  var pv=c.arr[c.pos-1];
-  if(pv && pv.t==="num" && pv.v.indexOf(".")<0 && c.pos===c.arr.length){ pv.v+="."; }
-  else if(pv && pv.t==="num" && pv.v.indexOf(".")<0){ pv.v+="."; }
+  var pv=numToExtend(c);
+  if(pv && pv.v.indexOf(".")<0){ pv.v+="."; c.pos++; }
   else ins(T_num("0."));
 }
 function inputOp(o){
-  if(S.resultShown){ root=[T_var("Ans")]; stack=[{arr:root,pos:1}]; S.resultShown=false; }
+  if(S.resultShown){ root=[T_var("Ans")]; stack=[{arr:root,pos:1}]; S.resultShown=false; }   /* pos 1 == just after Ans */
   var c=cur();
-  var pv=c.arr[c.pos-1];
-  if(pv && pv.t==="op" && pv.v!=="\u2220" && c.pos===c.arr.length){ pv.v=o; return; }
+  if(caretAtEnd(c)){
+    var pv=tokenEnd(c.arr,c.pos);
+    if(pv && pv.t==="op" && pv.v!=="\u2220"){ pv.v=o; return; }
+  }
   ins(T_op(o));
 }
 function inputVar(name){
@@ -873,8 +1102,24 @@ function inputFunc(name){
   ins(f);
   enter(f,"arg");
 }
-function inputFrac(){ startFreshIfResult(); var f=T_frac(); ins(f); enter(f,"num"); }
-function inputMixedFrac(){ startFreshIfResult(); var m=T_mixed(); ins(m); enter(m,"whole"); }
+/* a fraction is filled in whichever order the user prefers: "FRAC 7 3",
+   "7 FRAC 3" (the 7 becomes the numerator) and "FRAC 7 → 3" all work */
+function inputFrac(){
+  startFreshIfResult();
+  var num=takeTrailingNumber();
+  var f=T_frac();
+  if(num){ f.num.push(num); f._absorbed=true; }
+  ins(f);
+  enter(f,num?"den":"num");
+}
+function inputMixedFrac(){
+  startFreshIfResult();
+  var whole=takeTrailingNumber();
+  var m=T_mixed();
+  if(whole){ m.whole.push(whole); m._absorbed=true; }
+  ins(m);
+  enter(m,whole?"num":"whole");
+}
 function inputSqrt(){ startFreshIfResult(); var f=T_sqrt(); ins(f); enter(f,"body"); }
 function inputCbrt(){ startFreshIfResult(); var f=T_root(); f.n.push(T_num("3")); ins(f); enter(f,"body"); }
 function inputNthRoot(){ startFreshIfResult(); var f=T_root(); ins(f); enter(f,"n"); }
@@ -898,7 +1143,7 @@ function inputCloseParen(){
       stack.length=i;
       var p=cur();
       var idx=p.arr.indexOf(pn);
-      p.pos=(idx<0?p.arr.length-1:idx)+1;
+      p.pos=(idx<0?arrDigits(p.arr):tokenStart(p.arr,idx)+digitsIn(pn));
       return;
     }
   }
@@ -1282,7 +1527,7 @@ function selectMenuItem(){
   }
   if(m.type==="CONV"){
     S.menu=null; startFreshIfResult();
-    var c=cur(); if(c.pos>0) ins(T_op("*"));
+    var c=cur(); if(leftToken(c.arr,c.pos)) ins(T_op("*"));
     if(item.id==="\u00b0F\u2192\u00b0C") ins(T_func("f2c"));
     else if(item.id==="\u00b0C\u2192\u00b0F") ins(T_func("c2f"));
     else ins(T_num(String(item.val)));
@@ -1754,7 +1999,7 @@ function doEquals(){
     S.resultShown=true;
     S.lastExpr=JSON.parse(JSON.stringify(root));
     S.history.push({expr:JSON.parse(JSON.stringify(root)),val:val});
-    S.histIndex=S.history.length;
+    S.histIndex=-1;                 /* the newest entry is recalled on the next UP */
   }catch(e){
     S.error=(e&&e.msg)?e.msg:("Syntax ERROR");
   }
@@ -2133,8 +2378,8 @@ function dispatch(id){
       doEquals(); return;
     case "LEFT": doLeft(); render(); return;
     case "RIGHT": doRight(); render(); return;
-    case "UP": historyUp(); return;
-    case "DOWN": historyDown(); return;
+    case "UP": if(!doField(-1)) historyUp(); return;
+    case "DOWN": if(!doField(1)) historyDown(); return;
     case "OK": doEquals(); return;
   }
 
@@ -2222,7 +2467,7 @@ function dispatch(id){
 function inputSciNot(){
   startFreshIfResult();
   var c=cur();
-  if(c.pos>0) ins(T_op("*"));
+  if(leftToken(cur().arr,cur().pos)) ins(T_op("*"));
   var f=T_pow([T_num("10")],[]);
   ins(f); enter(f,"exp");
 }
@@ -2316,21 +2561,27 @@ function handleEqEdit(id){
   if(id==="OPTN"){ openMenu("OPTN"); return true; }
   return false;
 }
+/* histIndex always names the entry currently shown; -1 means "not browsing" */
 function historyUp(){
   if(!S.history.length) return;
-  if(S.histIndex>0) S.histIndex--;
+  S.histIndex=(S.histIndex<0)?S.history.length-1:Math.max(0,S.histIndex-1);
   loadHistory();
 }
 function historyDown(){
   if(!S.history.length) return;
-  if(S.histIndex<S.history.length) S.histIndex++;
-  if(S.histIndex>=S.history.length){ clearInput(); render(); return; }
+  if(S.histIndex<0) return;
+  S.histIndex++;
+  if(S.histIndex>=S.history.length){ S.histIndex=-1; clearInput(); render(); return; }
   loadHistory();
 }
 function loadHistory(){
   var h=S.history[S.histIndex];
   if(!h) return;
-  root=JSON.parse(JSON.stringify(h.expr)); resetCursor(); S.resultShown=false; S.error=null; S.message=null; render();
+  root=JSON.parse(JSON.stringify(h.expr));
+  resetCursor();                 /* must run after root is replaced, or the cursor
+                                    keeps editing the detached previous array */
+  stack[0].pos=arrDigits(root);  /* land at the end, ready to continue or edit */
+  S.resultShown=false; S.error=null; S.message=null; render();
 }
 
 /* ============================ OPTN ACTIONS ============================ */
@@ -2482,7 +2733,7 @@ S.resultHTML="";
 (function initSeed(){ root.length=0; resetCursor(); })();
 render();
 
-window.__calc = { S:S, dispatch:function(id){ dispatch(id); }, getExpr:function(){ return root; }, setExpr:function(a){ root=a; resetCursor(); }, evalExpr:function(){ return evaluateList(root); }, fmt:function(v){ return formatValue(v); }, _toFrac:function(x){ return toFrac(x,10000); }, _isInt:isInt };
+window.__calc = { S:S, dispatch:function(id){ dispatch(id); }, getExpr:function(){ return root; }, getCursor:function(){ var c=cur(); return {depth:stack.length,pos:c.pos,slot:c.slot||null,node:c.node?c.node.t:null,path:stack.map(function(f){ return f.slot||"root"; })}; }, setExpr:function(a){ root=a; resetCursor(); }, evalExpr:function(){ return evaluateList(root); }, fmt:function(v){ return formatValue(v); }, _toFrac:function(x){ return toFrac(x,10000); }, _isInt:isInt };
 })();
 </script>
 </body>
