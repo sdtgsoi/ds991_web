@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>DS991 Calculator Simulator</title>
 <style>
+  /* ---------------------------------------------------------------------------
+     Stylesheet map
+       1. theme variables + page shell
+       2. brand / solar strip
+       3. LCD: bezel, status bar, menu, expression, cursor, maths templates
+       4. small data tables (STAT / MATRIX / TABLE)
+       5. physical keys
+       6. d-pad cluster
+       7. responsive tweaks
+     The LCD ink colour and the SHIFT/ALPHA label colours are variables so the
+     simulated screen and the printed labels stay in step.
+     --------------------------------------------------------------------------- */
   :root{
     --shift:#d8b24a;
     --alpha:#e0559a;
@@ -44,6 +56,7 @@
     box-shadow:0 32px 60px rgba(0,0,0,.65), 0 2px 0 rgba(255,255,255,.06) inset, 0 -3px 0 rgba(0,0,0,.5) inset;
     position:relative;
   }
+  /* ---- brand strip and the decorative solar cell ---- */
   .brandrow{display:flex; justify-content:space-between; align-items:flex-start; padding:2px 6px 4px;}
   .brand{line-height:1;}
   .brand .manuf{color:#ececec; font-weight:900; letter-spacing:2.5px; font-size:21px; text-shadow:0 1px 0 #000;}
@@ -54,6 +67,7 @@
     background:#0d0f12;display:flex;gap:2px;padding:3px;box-shadow:inset 0 0 8px #000;
   }
   .solar i{flex:1;background:linear-gradient(#262c33,#0c0e11);border-radius:1px;}
+  /* ---- LCD: recessed bezel, screen glass, status bar ---- */
   .lcd-behind{background:#08090a;border-radius:10px;padding:9px;margin:8px 4px 16px;box-shadow:inset 0 3px 8px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.05);}
   .lcd{
     position:relative;
@@ -93,6 +107,7 @@
   }
   .mod-banner.on{visibility:visible;}
   .screen-main{position:absolute; left:9px; right:9px; top:20px; bottom:6px; display:flex; flex-direction:column;}
+  /* ---- menu pages drawn on the LCD (MODE list, SETUP, OPTN, ...) ---- */
   .menu-title{font-size:14px; text-align:center; letter-spacing:1px; margin-bottom:2px;}
   .menu-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:6px 4px; align-content:start; padding-top:2px;}
   .menu-item{text-align:center; font-size:8px; line-height:1.15; border-radius:4px; padding:3px 1px; cursor:pointer;}
@@ -103,6 +118,7 @@
   }
   .menu-item.sel{background:rgba(32,38,26,.16);}
   .menu-item.sel .ico{background:var(--lcd-ink);color:#c7d1b3;}
+  /* ---- the calculation screen: expression line + answer line ---- */
   .exprwrap{
     flex:1; display:flex; flex-direction:column; justify-content:center;
     min-height:0;
@@ -118,6 +134,7 @@
   .resultline .sub{font-size:9px; margin-left:4px; vertical-align:sub;}
   .screen-scroll{flex:1; overflow:auto; scrollbar-width:thin;}
   .prompt{font-size:13px; padding:2px 0;}
+  /* ---- caret and the Natural-Display maths templates ---- */
   .cursor{display:inline-block;width:2px;height:1.05em;background:var(--lcd-ink);margin:0 1px;vertical-align:middle;animation:blink 1.05s steps(1) infinite;}
   @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
   .math{display:inline-flex;align-items:center;flex-wrap:nowrap;}
@@ -134,17 +151,50 @@
   .logbase{display:inline;white-space:nowrap;}
   .logbase .sub{vertical-align:-0.34em;}
   .logbase .lbp{display:inline;}
+  /* log base placeholder: a tall narrow rectangle; the base one is solid */
+  .logbase .lbp>.box{min-width:.54em;height:1.5em;margin:0 2px;}
+  .logbase .sub>.box{border-color:var(--lcd-ink);background:var(--lcd-ink);}
   .box{display:inline-block;min-width:.62em;height:.72em;border:1.4px solid rgba(32,38,26,.6);border-radius:2px;vertical-align:middle;margin:0 1px;}
   .bigop{display:inline-flex;align-items:center;margin:0 1px;}
+  /* the integral keeps its limits against the top and bottom of the sign, but
+     must not grow the line box: the tall limits are allowed to overflow their
+     container symmetrically instead of stretching it */
+  .bigop:has(>.lim.tall){line-height:1;}
   .bigop>.sym{font-size:1.55em;line-height:1;}
   .bigop>.lim{display:inline-flex;flex-direction:column;font-size:.5em;line-height:1.05;margin-left:1px;}
+  /* the integral's limits hug the very top and bottom of the sign */
+  /* Integral bounds. They print after the sign as a small stack with the upper
+     limit on top and the lower limit underneath: .lim is a flex column, so the
+     children stack in document order (see the intg renderer) and alignment
+     properties would be ignored. The stack overflows its container
+     symmetrically rather than stretching the line box, which is what used to
+     push the integral off the LCD. */
+  .bigop>.lim.tall{align-self:center;justify-content:space-between;font-size:.5em;margin:0 1px;line-height:1;overflow:visible;}
+  /* integral: sign, bounds, integrand in three grid columns. The integrand is
+     printed last but is the first slot the caret walks */
+  /* Integral. Document order is the navigation order (integrand first), but the
+     limits are taken out of the flow so the printed result still reads
+     "sign, bounds, integrand".
+
+     The limits span the whole height of the sign, so the upper one hugs its top
+     and the lower one its bottom, and they are allowed to overflow the (short)
+     line box symmetrically rather than stretching it - stretching is what used
+     to push the integral off the LCD. */
+  .bigop.intgb{position:relative;align-items:center;padding-left:1.9em;min-height:2.6em;}
+  .bigop.intgb>.sym{position:absolute;left:0;top:50%;transform:translateY(-50%);font-size:1.85em;}
+  .bigop.intgb>.lim.tall{position:absolute;left:1.15em;top:50%;transform:translateY(-50%);
+    height:2.5em;font-size:.55em;overflow:visible;}
+  .bigop.intgb>.lim.tall>span{line-height:1;}
   .dydx{display:inline-flex;flex-direction:column;align-items:center;font-size:.62em;line-height:1;margin-right:2px;}
   .dydx .bar{border-top:1.5px solid currentColor;width:100%;}
   .paren{color:inherit;}
   .muted{opacity:.55;}
+  /* ---- keyboard pads: two CSS grids that the key data is placed into ---- */
   .pad-top{display:grid;grid-template-columns:repeat(30,1fr);gap:0 4px;align-items:center;margin:2px 0 12px;}
   .pad-main{display:grid;grid-template-columns:repeat(30,1fr);gap:28px 4px;align-items:end;}
   .pad-main .keycell.fnrow .key{height:26px;width:86%;font-size:13px;}
+  /* ---- a single key: the flat keycap, its pressed state, and the printed
+     SHIFT (yellow) / ALPHA (pink) labels shown above it ---- */
   .keycell{position:relative;display:flex;align-items:center;justify-content:center;}
   .key{
     position:relative;z-index:2;width:100%;height:37px;
@@ -159,26 +209,43 @@
   .key:active,.key.pressed{transform:translateY(2.5px);box-shadow:0 0 0 var(--keyedge),0 1px 2px rgba(0,0,0,.5);}
   .key.del,.key.ac{background:linear-gradient(#4f8ee6,#2f6fd0 70%,#265fb5);color:#fff;box-shadow:0 2.5px 0 #1d4c93,0 4px 5px rgba(0,0,0,.55);}
   .key.del:active,.key.ac:active,.key.del.pressed,.key.ac.pressed{box-shadow:0 0 0 #1d4c93,0 1px 2px rgba(0,0,0,.5);}
-  .key.round{
+  /* the four top control keys are drawn flat; their printed name sits above the
+     plate just like the SHIFT/ALPHA labels of the other keys, and the plate
+     itself carries no label and no highlight */
+  .key.roundk{
     width:40px;height:40px;border-radius:50%;font-size:9px;color:#f2f2f2;
-    background:radial-gradient(circle at 34% 28%,#d7d9dc,#8c8f94 42%,#4a4d52 78%,#2b2d31);
-    box-shadow:0 2px 3px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.6);
-    margin:0 auto;font-weight:700;letter-spacing:.5px;
+    background:radial-gradient(circle at 34% 26%,#fdfdfd,#dfe1e4 30%,#aeb2b8 62%,#71767d 100%);
+    box-shadow:0 2px 4px rgba(0,0,0,.6),inset 0 1px 1px rgba(255,255,255,.85),inset 0 -2px 3px rgba(0,0,0,.28);
+    margin:18px auto 0;font-weight:700;letter-spacing:.5px;
   }
-  .key.round.shiftk{color:#f2d878;}
-  .key.round.alphak{color:#ff9bc7;}
+  /* the printed name of a top key reads like a primary label (white); the
+     yellow SHIFT-style colour is reserved for the SETTINGS label and for the
+     SHIFT/ALPHA keys themselves */
+  .key.roundk .sl{top:-15px;font-size:9px;color:#e8eaec;}
+  /* NB .key.roundk .sl (0,3,0) outranks .key .sl (0,2,0), so the SETTINGS
+     label — which carries the .right marker — needs its own rule here or it
+     silently inherits the white primary-name colour. */
+  .key.roundk .sl.right{color:var(--shift);text-shadow:0 1px 0 rgba(0,0,0,.35);}
+  .key.roundk.shiftk .sl{color:#f2d878;}
+  .key.roundk.alphak .sl{color:#ff9bc7;}
+  .key.roundk:active,.key.roundk.pressed{transform:translateY(1.5px);box-shadow:0 0 0 #101114,0 1px 2px rgba(0,0,0,.5);}
+  .pad-top .keycell{overflow:visible;}
   .key .sl{position:absolute;top:-13px;font-size:8.5px;font-weight:700;color:var(--shift);white-space:nowrap;line-height:1;text-shadow:0 1px 0 rgba(0,0,0,.35);}
   .key .al{position:absolute;top:-13px;font-size:8.5px;font-weight:700;color:var(--alpha);white-space:nowrap;line-height:1;text-shadow:0 1px 0 rgba(0,0,0,.35);}
   .key .sl.center,.key .al.center{left:50%;transform:translateX(-50%);}
   .key[data-key="INTG"] .sl{top:-21px;}
   .key[data-key="SD"] .sl{top:-19px;}
   .key .sl.left{left:3px;}
+  .key .sl.right{right:3px;}
+  /* the two names on the MENU key need a little air between them */
+  .key.roundk .sl.right{right:0;}
+  .key.roundk .sl.left{left:0;}
   .key .al.right{right:3px;}
   .calculator.shift-on .key .sl{color:#ffe38f;text-shadow:0 0 7px rgba(216,178,74,.95),0 0 2px #000;font-weight:900;}
-  .calculator.shift-on .key.round.shiftk{box-shadow:0 0 0 2px #d8b24a,0 0 12px rgba(216,178,74,.85),0 2px 3px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.6);color:#fff;}
+  .calculator.shift-on .key.roundk.shiftk .sl{color:#ffe38f;text-shadow:0 0 9px rgba(216,178,74,.95);}
   .calculator.alpha-on .key .al{color:#ff9ecb;text-shadow:0 0 7px rgba(224,85,154,.95),0 0 2px #000;font-weight:900;}
-  .calculator.alpha-on .key.round.alphak{box-shadow:0 0 0 2px #e0559a,0 0 12px rgba(224,85,154,.9),0 2px 3px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.6);color:#fff;}
-  .calculator.shift-on .key:not(.round) .prim,.calculator.alpha-on .key:not(.round) .prim{opacity:.55;}
+  .calculator.alpha-on .key.roundk.alphak .sl{color:#ff9ecb;text-shadow:0 0 9px rgba(224,85,154,.9);}
+  .calculator.shift-on .key:not(.roundk) .prim,.calculator.alpha-on .key:not(.roundk) .prim{opacity:.55;}
   .key .prim{display:inline-flex;align-items:center;justify-content:center;pointer-events:none;}
   .kcap-sub{font-size:.62em;position:relative;top:.3em;margin-left:1px;}
   .kbox{display:inline-block;width:.72em;height:.72em;border:1.4px solid currentColor;border-radius:1.5px;vertical-align:middle;box-sizing:border-box;}
@@ -206,6 +273,7 @@
   .key .prim.sm{font-size:12px;}
   .key .stack{display:inline-flex;flex-direction:column;align-items:center;font-size:11px;line-height:1.0;vertical-align:middle;}
   .key .stack .n{border-bottom:1.6px solid currentColor;padding:0 3px;}
+  /* ---- the navigation cluster: a clip-path ring plus four hit areas ---- */
   .dpad{position:relative;width:122px;height:76px;margin:30px auto 0;}
   .dpd-ring,.dpd-face{
     position:absolute;inset:0;
@@ -243,6 +311,7 @@
   .power-off .screen-main{display:none;}
   .power-off .status{opacity:0;}
   .badge{position:absolute;bottom:7px;right:14px;font-size:9px;color:#5a5e64;letter-spacing:1px;}
+  /* ---- small data tables used by the STAT / MATRIX / TABLE screens ---- */
   table.cells{border-collapse:collapse;font-size:12px;font-family:inherit;}
   table.cells td{border:1px solid rgba(32,38,26,.45);padding:1px 6px;min-width:34px;text-align:right;height:19px;}
   table.cells td.head{border:none;font-weight:900;text-align:center;background:transparent;}
@@ -256,6 +325,7 @@
   .tbl{font-size:11px;font-family:inherit;border-collapse:collapse;}
   .tbl td,.tbl th{border:1px solid rgba(32,38,26,.4);padding:0 6px;text-align:right;height:17px;}
   .tbl th{background:rgba(32,38,26,.12);}
+  /* ---- responsive: shrink key metrics on narrow phones, keeping order ---- */
   @media (max-width:430px){
     .calculator{padding:12px 11px 18px;}
     .key{height:34px;font-size:14px;}
@@ -266,7 +336,13 @@
 </style>
 </head>
 <body>
+<!-- The simulated body. Only three places are filled in by script:
+       #screen  - the LCD contents (every screen is redrawn from state)
+       #padTop  - the top control row (built from TOP_KEYS)
+       #padMain - the main key block (built from MAIN_KEYS)
+     Everything else here is static chrome. -->
 <div class="calculator" id="calc">
+  <!-- brand strip + decorative solar cell -->
   <div class="brandrow">
     <div class="brand">
       <div class="manuf">BALI</div>
@@ -275,6 +351,7 @@
     </div>
     <div class="solar"><i></i><i></i><i></i><i></i><i></i><i></i></div>
   </div>
+  <!-- LCD: status bar indicators on top, then the scrolling screen area -->
   <div class="lcd-behind">
     <div class="lcd" id="lcd">
       <div class="status">
@@ -297,16 +374,74 @@
       <div class="screen-main" id="screen"></div>
     </div>
   </div>
+  <!-- both pads are generated by buildPad() from the KEY LAYOUT data -->
   <div class="pad-top" id="padTop"></div>
   <div class="pad-main" id="padMain"></div>
   <div class="hint">Mouse / touch / keyboard enabled &nbsp;·&nbsp; SHIFT &amp; ALPHA are sticky</div>
   <div class="badge">fx-991CN X</div>
 </div>
 <script>
+/*
+ * ============================================================================
+ * DS991 - a browser simulator for the fx-991CN X.
+ * ============================================================================
+ *
+ * The whole application is this single IIFE. The pipeline is:
+ *
+ *     key (mouse / touch / keyboard)
+ *         -> dispatch(id)                 route a physical key to a command
+ *         -> input* / do* / handle*       mutate the expression or the state
+ *         -> render()                     redraw the LCD from that state
+ *
+ * ---------------------------------------------------------------------------
+ * The expression model
+ * ---------------------------------------------------------------------------
+ * `root` is an ARRAY OF TOKENS (not one node) so a top level expression is just
+ * the same thing as the contents of a template slot. Every node is a plain
+ * object with a `t` (type) tag, see the T_* factories below. Composite nodes
+ * (fractions, roots, integrals...) hold their children in NAMED ARRAYS, e.g.
+ *
+ *     {t:"frac", num:[...], den:[...]}
+ *
+ * ---------------------------------------------------------------------------
+ * The cursor model  (the single most important idea in this file)
+ * ---------------------------------------------------------------------------
+ * `stack` is the cursor path. Frame 0 is always `root`; deeper frames are the
+ * slots of the templates the caret has descended into:
+ *
+ *     stack = [ {arr:root,pos:0}, {arr:fracNode.num,pos:2,node:fracNode,slot:"num"} ]
+ *
+ * The `pos` of a frame is a *digit offset into that frame's array*, NOT a token
+ * index. A token such as the number "12" spans two caret positions, so:
+ *
+ *   - LEFT/RIGHT move exactly one digit and can sit in the middle of a number
+ *   - UP/DOWN keep the same digit offset when hopping between a template's
+ *     slots, which is what makes the numerator/denominator line up
+ *   - insertion is a plain splice, so a node typed inside a number first split
+ *     that number ("12" + "^" at offset 1 -> "1", "^", "2")
+ *
+ * `digitsIn()` / `arrDigits()` measure an array in digit offsets, and the
+ * conversion helpers (tokenAt / tokenAtPos / insertIndex / leftToken /
+ * tokenEnd / offsetInToken) translate between offsets and token indices. When a
+ * count is needed for OUTER layout purposes use `slotDigits()` instead, which
+ * forces empty slots to still occupy one digit so they stay reachable.
+ *
+ * ---------------------------------------------------------------------------
+ * Rendering
+ * ---------------------------------------------------------------------------
+ * `render()` picks a screen function from the current mode. The calculation
+ * screen is drawn by rendering the expression tree straight to HTML; templates
+ * render each slot with `slotOrBox()`, which draws the caret when the caret is
+ * inside that slot and a placeholder box when the slot is empty.
+ *
+ * The file is ordered bottom-up so that helpers are already defined by the time
+ * the behavioural sections use them.
+ */
 (function(){
 "use strict";
 
 /* ============================ STATE ============================ */
+/* Calculation modes, in MENU order (index + 1 is the digit that selects it). */
 var MODES = ["CALC","CMPLX","BASE","MATRIX","VECTOR","STAT","TABLE","EQUATION","INEQ","RATIO"];
 var MODE_META = {
   CALC:{name:"Calculate", ico:"123", en:"Calculate"},
@@ -321,31 +456,33 @@ var MODE_META = {
   RATIO:{name:"Ratio", ico:":", en:"Ratio"}
 };
 
+/* The single mutable calculator state. Everything the LCD shows is derived
+   from this object plus `root` / `stack`. */
 var S = {
-  power:true,
-  mode:"CALC",
-  base:10,
-  shift:false,
-  alpha:false,
-  ans:0,
-  hasAns:false,
+  power:true,          /* false = the "off" skin is shown and keys are ignored */
+  mode:"CALC",         /* one of MODES */
+  base:10,             /* Base-N mode: 2, 8, 10 or 16 */
+  shift:false,         /* SHIFT is armed and will apply to the next key */
+  alpha:false,         /* ALPHA is armed */
+  ans:0,               /* last answer, recalled by the Ans token */
+  hasAns:false,        /* false until the first "=", so Ans reads 0 before that */
   vars:{A:0,B:0,C:0,D:0,E:0,F:0,X:0,Y:0,Z:0},
-  M:0,
-  angle:"DEG",
-  io:"MATH",
-  fmt:{mode:"NORM",digits:2},
-  fracResult:true,
-  fracForm:"improper",
-  exact:true,
-  eng:false,
-  menu:null,
-  error:null,
-  history:[],
-  histIndex:-1,
-  resultShown:false,
+  M:0,                 /* independent memory */
+  angle:"DEG",         /* DEG | RAD | GRA */
+  io:"MATH",           /* MATH | LINE input-output setting */
+  fmt:{mode:"NORM",digits:2},  /* NORM | FIX | SCI plus its digit count */
+  fracResult:true,     /* show exact results (S<->D off) */
+  fracForm:"improper", /* improper | mixed display of fractions */
+  exact:true,          /* S<->D state: true = exact form, false = decimal */
+  eng:false,           /* engineering notation display toggle */
+  menu:null,           /* active menu descriptor, see openMenu() */
+  error:null,          /* message string while the red error screen is up */
+  history:[],          /* [{expr:<deep copy>, val:<number>}] newest last */
+  histIndex:-1,        /* entry currently recalled, -1 = not browsing */
+  resultShown:false,   /* true = the answer line is showing (caret hidden) */
   lastExpr:null,
-  stoPending:false,
-  calcPending:null,
+  stoPending:false,    /* STO pressed, waiting for the variable key */
+  calcPending:null,    /* CALC/SOLVE prompt waiting for an initial guess */
   screenScroll:0,
   matrix:{A:null,B:null,C:null,D:null,sel:"A",edit:null},
   vector:{A:null,B:null,C:null,D:null,sel:"A",edit:null},
@@ -356,12 +493,19 @@ var S = {
   constMenu:null
 };
 
+/* The expression being edited, and the cursor path into it. `root` is replaced
+   (not mutated) when recalling history, which is why the cursor must be reset
+   after any such replacement - see loadHistory(). */
 var root = [];
 var stack = [{arr:root,pos:0}];
 
+/* Innermost cursor frame. */
 function cur(){ return stack[stack.length-1]; }
 function isNode(o,t){ return o && typeof o==="object" && o.t===t; }
 
+/* ---- token factories -------------------------------------------------------
+   Every token is {t:<type>, ...}. Anything holding children holds ARRAYS of
+   tokens so that a slot behaves exactly like the top level expression. */
 function node(t,extra){ var o={t:t}; if(extra) for(var k in extra) o[k]=extra[k]; return o; }
 function T_num(v){ return node("num",{v:String(v)}); }
 function T_op(v){ return node("op",{v:v}); }
@@ -383,21 +527,32 @@ function T_logbase(){ return node("logbase",{base:[],arg:[]}); }
 function T_post(v){ return node("post",{v:v}); }
 
 /* ============================ ERRORS ============================ */
+/* Calculator errors are thrown, caught at the top of an evaluation and turned
+   into the red LCD message by the renderer. */
 function CalcError(msg){ this.msg=msg; }
 CalcError.prototype.toString=function(){ return this.msg; };
 function err(m){ return new CalcError(m); }
 
 /* ============================ KEY LAYOUT ============================ */
+/* The physical keyboard as DATA: each entry is one key with its grid position
+   (r/c in the 30-column pad grid, s = column span) plus the printed labels.
+     label / prim : the main face of the key (prim may contain small HTML)
+     shift        : the yellow SHIFT label printed above the key
+     alpha        : the pink ALPHA label
+   Two pads are defined: the top control row (TOP_KEYS, flat round keys and the
+   d-pad) and the main block (MAIN_KEYS). buildPad() turns these into buttons. */
 var TOP_KEYS = [
-  {id:"SHIFT", label:"SHIFT", cls:"round shiftk", r:1,c:1,s:5},
-  {id:"ALPHA", label:"ALPHA", cls:"round alphak", r:1,c:6,s:5},
+  {id:"SHIFT", label:"SHIFT", cls:"roundk shiftk", r:1,c:1,s:5},
+  {id:"ALPHA", label:"ALPHA", cls:"roundk alphak", r:1,c:6,s:5},
   {id:"DPAD", cls:"dpad", r:1,c:11,s:10},
-  {id:"MENU", label:"MENU", cls:"round", r:1,c:21,s:5, above:"\u83dc\u5355"},
-  {id:"ON", label:"ON", cls:"round", r:1,c:26,s:5, above:"\u5f00\u673a"}
+  /* MENU carries its own white name plus the yellow SETTINGS label, both above
+     the plate; ON is labelled above in white */
+  {id:"MENU", label:"\u83dc\u5355/ ", cls:"roundk", r:1,c:21,s:5, shift:"\u8bbe\u7f6e"},
+  {id:"ON", label:"\u5f00\u673a", cls:"roundk", r:1,c:26,s:5}
 ];
 
 var MAIN_KEYS = [
-  {id:"OPTN", label:"OPTN", shift:"VAR", r:1,c:1,s:5},
+  {id:"OPTN", label:"OPTN", r:1,c:1,s:5},
   {id:"CALC", label:"CALC", shift:"SOLVE", r:1,c:6,s:5},
   {id:"INTG", prim:'<span class="bigop"><span class="sym">\u222b</span></span><span class="intgblk"><span class="kbox sm bound-u"></span><span class="kbox integrand"></span><span class="kbox sm bound-l"></span></span>', shift:'<span class="kfrac-txt"><span class="n">d</span><span class="bar"></span><span class="d">dx</span></span>', r:1,c:21,s:5},
   {id:"XKEY", prim:'<span class="it">x</span>', shift:"\u03a3", r:1,c:26,s:5},
@@ -449,6 +604,34 @@ var MAIN_KEYS = [
 ];
 
 /* ============================ BUILD KEYPAD ============================ */
+/* Turns the KEY LAYOUT data into DOM buttons. Every key is one clickable
+   <button data-key="ID">, and all input funnels through dispatch(id) so the
+   mouse, touch and physical keyboard cannot diverge. */
+/* Flat top-control key: an empty plate with the printed name above it. The
+   optional shift label sits on the same line, to the right of the name. */
+function buildRoundKey(def){
+  var cell=document.createElement("div");
+  cell.className="keycell";
+  cell.style.gridColumn=def.c+"/span "+def.s;
+  cell.style.gridRow=String(def.r);
+  var btn=document.createElement("button");
+  btn.className="key "+(def.cls||"");
+  btn.setAttribute("data-key",def.id);
+  var aria=[def.label?def.label.replace(/<[^>]+>/g,""):"", def.shift?"shift "+def.shift.replace(/<[^>]+>/g,""):""].join(" ").trim();
+  btn.setAttribute("aria-label",aria);
+  var lbl=document.createElement("span");
+  lbl.className=def.shift?"sl left":"sl center";
+  lbl.innerHTML=def.label!==undefined?def.label:def.prim||"";
+  btn.appendChild(lbl);
+  if(def.shift){
+    var sl=document.createElement("span");
+    sl.className="sl right";
+    sl.innerHTML=def.shift;
+    btn.appendChild(sl);
+  }
+  cell.appendChild(btn);
+  return cell;
+}
 function buildKey(def){
   var cell=document.createElement("div");
   cell.className="keycell";
@@ -473,6 +656,9 @@ function buildKey(def){
     var okb=document.createElement("button"); okb.className="dp ok"; okb.setAttribute("data-key","OK"); okb.setAttribute("aria-label","OK"); dp.appendChild(okb);
     cell.appendChild(dp);
     return cell;
+  }
+  if(/\broundk\b/.test(def.cls||"")){
+    return buildRoundKey(def);
   }
   var btn=document.createElement("button");
   btn.className="key "+(def.cls||"");
@@ -531,6 +717,13 @@ function tapVisual(el){
 }
 
 /* ============================ DISPLAY HELPERS ============================ */
+/* Expression tree -> LCD HTML.
+   renderArr()/renderNode() walk the tree; renderNodeAt() is the variant that
+   splices the caret into a token at a digit offset, which is what lets the
+   caret appear in the middle of a number. slotOrBox() draws one template slot,
+   showing the caret while the caret is in that slot and a placeholder box when
+   the slot is still empty. opSym/fnSym/constSym map token values to glyphs.
+   `hideCaret` is raised while an answer or an error is on screen. */
 var LCD=document.getElementById("lcd");
 var SCREEN=document.getElementById("screen");
 
@@ -542,20 +735,43 @@ function num2sup(n){
 }
 
 var CARET='<span class="cursor"></span>';
+/* while an answer (or an error screen) is on display the caret is suppressed;
+   it comes back as soon as the user starts editing again */
+var hideCaret=false;
+function caretHTML(){ return hideCaret?"":CARET; }
 /* draw one token, splicing the caret in at the requested digit offset */
 function renderNodeAt(n,at){
   if(at===undefined||at===null) return renderNode(n);
   if(n.t==="num"){
     var s=String(n.v);
-    return esc(s.slice(0,at))+CARET+esc(s.slice(at));
+    return esc(s.slice(0,at))+caretHTML()+esc(s.slice(at));
   }
-  if(at<=0) return CARET+renderNode(n);
-  if(at>=digitsIn(n)) return renderNode(n)+CARET;
+  if(at<=0) return caretHTML()+renderNode(n);
+  if(at>=digitsIn(n)) return renderNode(n)+caretHTML();
   if(n.t==="paren"||n.t==="abs"){
-    if(at===1) return '<span class="math paren">'+CARET+'('+renderArr(n.body)+')</span>';
-    if(at>=2+(n.body?arrDigits(n.body):0)) return '<span class="math paren">('+renderArr(n.body)+')'+CARET+'</span>';
+    if(at===1) return '<span class="math paren">'+caretHTML()+'('+renderArr(n.body)+')</span>';
+    if(at>=2+(n.body?arrDigits(n.body):0)) return '<span class="math paren">('+renderArr(n.body)+')'+caretHTML()+'</span>';
   }
-  return renderNode(n)+CARET;
+  if(n.t==="frac"){
+    var nd=slotDigits(n.num), dd=slotDigits(n.den), total=nd+dd;
+    if(at<=0) return caretHTML()+renderNode(n);
+    if(at>=total) return renderNode(n)+caretHTML();
+    if(at<nd) return '<span class="math frac"><span class="num">'+renderArrAt(n.num, at)+'</span><span class="den">'+renderArr(n.den)+'</span></span>';
+    if(at===nd) return '<span class="math frac"><span class="num">'+renderArr(n.num)+'</span>'+caretHTML()+'<span class="den">'+renderArr(n.den)+'</span></span>';
+    return '<span class="math frac"><span class="num">'+renderArr(n.num)+'</span><span class="den">'+renderArrAt(n.den, at-nd)+'</span></span>';
+  }
+  if(n.t==="mixed"){
+    var wd=slotDigits(n.whole), nd=slotDigits(n.num), dd=slotDigits(n.den);
+    var total=wd+nd+dd;
+    if(at<=0) return caretHTML()+renderNode(n);
+    if(at>=total) return renderNode(n)+caretHTML();
+    if(at<wd) return '<span class="math mixed">'+renderArrAt(n.whole, at)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num)+'</span><span class="den">'+renderArr(n.den)+'</span></span></span>';
+    if(at===wd) return '<span class="math mixed">'+renderArr(n.whole)+caretHTML()+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num)+'</span><span class="den">'+renderArr(n.den)+'</span></span></span>';
+    if(at<wd+nd) return '<span class="math mixed">'+renderArr(n.whole)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArrAt(n.num, at-wd)+'</span><span class="den">'+renderArr(n.den)+'</span></span></span>';
+    if(at===wd+nd) return '<span class="math mixed">'+renderArr(n.whole)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num)+'</span>'+caretHTML()+'<span class="den">'+renderArr(n.den)+'</span></span></span>';
+    return '<span class="math mixed">'+renderArr(n.whole)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num)+'</span><span class="den">'+renderArrAt(n.den, at-wd-nd)+'</span></span></span>';
+  }
+  return renderNode(n)+caretHTML();
 }
 function renderArr(arr){
   var curArr=cur().arr, curPos=cur().pos;
@@ -567,7 +783,22 @@ function renderArr(arr){
     else out+=renderNode(arr[i]);
     t+=nd;
   }
-  if(isCur && curPos>=t) out+=CARET;
+  if(isCur && curPos>=t) out+=caretHTML();
+  return out;
+}
+/* Render an array with the caret forced at digit offset `at`, ignoring the
+   global cursor. Used when the parent view needs to show a caret inside a
+   template slot (e.g. a fraction numerator) while the cursor is not actually
+   inside that slot. */
+function renderArrAt(arr, at){
+  var out="", t=0;
+  for(var i=0;i<arr.length;i++){
+    var nd=digitsIn(arr[i]);
+    if(at>=t && at<t+nd) out+=renderNodeAt(arr[i], at-t);
+    else out+=renderNode(arr[i]);
+    t+=nd;
+  }
+  if(at>=t) out+=CARET;
   return out;
 }
 /* an empty template slot shows a placeholder box; the box disappears while
@@ -580,7 +811,7 @@ function slotCursor(arr){
 }
 function slotOrBox(arr,boxCls,extra){
   if(arr.length) return renderArr(arr);      /* renderArr also emits the caret */
-  if(slotEditing(arr)) return CARET;         /* empty slot being edited */
+  if(slotEditing(arr)) return caretHTML();   /* empty slot being edited */
   return '<span class="box'+(boxCls?" "+boxCls:"")+'"'+(extra||"")+'></span>';
 }
 function renderNode(n){
@@ -600,7 +831,11 @@ function renderNode(n){
     case "sqrt": return '<span class="math sqrt"><span class="rad">\u221a</span><span class="body">'+slotOrBox(n.body)+'</span></span>';
     case "root": return '<span class="math sqrt"><span class="sup">'+slotOrBox(n.n)+'</span><span class="rad">\u221a</span><span class="body">'+slotOrBox(n.body)+'</span></span>';
     case "logbase": return '<span class="logbase">log<span class="sub">'+slotOrBox(n.base)+'</span><span class="lbp">('+slotOrBox(n.arg)+')</span></span>';
-    case "intg": return '<span class="math bigop"><span class="lim"><span>'+slotOrBox(n.upper)+'</span><span>'+slotOrBox(n.lower)+'</span></span><span class="sym">\u222b</span></span><span class="math">'+slotOrBox(n.body)+'</span><span class="math"> d'+esc((n.var||"X").toLowerCase())+'</span>';
+    /* Printed as sign + bounds stack, then the integrand to their right. The
+       bounds are absolutely positioned beside the sign so that the document
+       order stays in navigation order (integrand first) without the integrand
+       appearing between the sign and its limits. */
+    case "intg": return '<span class="math bigop intgb"><span class="sym">\u222b</span><span class="lim tall"><span>'+slotOrBox(n.upper)+'</span><span>'+slotOrBox(n.lower)+'</span></span>'+slotOrBox(n.body)+'</span><span class="math"> d'+esc((n.var||"X").toLowerCase())+'</span>';
     case "deriv": return '<span class="math bigop"><span class="dydx"><span>d</span><span class="bar"></span><span>d'+esc((n.var||"X").toLowerCase())+'</span></span>('+slotOrBox(n.body)+')</span><span class="math" style="font-size:.8em">&nbsp;|' + slotOrBox(n.at) + '</span>';
     case "sum": return '<span class="math bigop"><span class="lim"><span>'+slotOrBox(n.upper)+'</span><span>'+slotOrBox(n.lower)+'</span></span><span class="sym">\u03a3</span></span>('+slotOrBox(n.body)+')';
     case "prod": return '<span class="math bigop"><span class="lim"><span>'+slotOrBox(n.upper)+'</span><span>'+slotOrBox(n.lower)+'</span></span><span class="sym">\u03a0</span></span>('+slotOrBox(n.body)+')';
@@ -621,6 +856,10 @@ function constSym(name){
 }
 
 /* ============================ NUMBER FORMAT ============================ */
+/* Turning a JS number into display text, honouring the SETUP choices:
+   NORM/FIX/SCI, engineering notation, exact fractions, multiples of pi and the
+   current Base-N radix. formatValue() is the entry point; toFrac() is the
+   continued-fraction rational approximation behind the S<->D feature. */
 function toSupExp(str){ return str; }
 function fmtReal(x){
   if(typeof x!=="number"||isNaN(x)) throw err("Math ERROR");
@@ -722,10 +961,19 @@ function formatComplex(z){
 }
 
 /* ============================ EDITING ============================ */
-/* A frame's pos is a DIGIT OFFSET into its array, not a token index: a number
-   token such as "12" spans two caret positions, so ←/→ move one digit at a
-   time and ⌐/▷ can line the caret up in the numerator and denominator alike.
-   These helpers convert between the two. */
+/* The caret and everything that mutates the expression. Read the "cursor model"
+   note at the top of the file first: a frame's `pos` is a digit offset, and the
+   helpers in the first block convert between offsets and token indices.
+     - measurement : digitsIn / arrDigits / slotDigits
+     - conversion  : tokenAtPos / offsetInToken / tokenAt / insertIndex /
+                     leftToken / tokenAtTrailingEdge / splitNumberAt
+     - movement    : doLeft / doRight / doField (UP/DOWN) / leaveField /
+                     descendAtCursor
+     - deletion    : delDigitIn / doDel
+     - insertion   : ins and the input*() family, one per key
+   The input*() helpers never splice directly; they build a token, insert it at
+   the caret (ins) and then `enter()` the slot the user should type into next. */
+/* ---- 1. measurement: how many caret positions does a token occupy? ---- */
 function digitsIn(n){
   if(!n) return 0;
   if(n.t==="num") return Math.max(1,String(n.v).length);
@@ -733,18 +981,35 @@ function digitsIn(n){
   if(tn==="variable"||tn==="const"||tn==="post"||tn==="op") return 1;
   if(tn==="paren"||tn==="abs") return 2+(n.body?arrDigits(n.body):0);
   if(tn==="func") return 1+(n.arg?arrDigits(n.arg):0)+1;
-  if(tn==="frac") return (n.num?arrDigits(n.num):0)+(n.den?arrDigits(n.den):0)+1;
-  if(tn==="mixed") return (n.whole?arrDigits(n.whole):0)+(n.num?arrDigits(n.num):0)+(n.den?arrDigits(n.den):0)+1;
+  if(tn==="frac") return slotDigits(n.num)+slotDigits(n.den);
+  if(tn==="mixed") return slotDigits(n.whole)+slotDigits(n.num)+slotDigits(n.den);
   if(tn==="logbase") return 4+(n.base?arrDigits(n.base):0)+(n.arg?arrDigits(n.arg):0)+2;
   if(tn==="sqrt") return 1+(n.body?arrDigits(n.body):0);
   if(tn==="root") return 1+(n.n?arrDigits(n.n):0)+1+(n.body?arrDigits(n.body):0);
-  if(tn==="intg") return 1+(n.upper?arrDigits(n.upper):0)+(n.lower?arrDigits(n.lower):0)+1+(n.body?arrDigits(n.body):0)+2;
+  /* The integral's slots are laid out in NAVIGATION order so that a single
+     digit offset maps to exactly one region: integrand, then lower limit, then
+     upper limit. This is what makes RIGHT at the end of the integrand reach the
+     lower bound. The printed "dx" is decoration and must not add caret
+     positions, otherwise the caret escapes the template while the integrand is
+     still being typed.
+
+     The limits are then PRINTED as a stack beside the sign rather than in
+     document order (see the intg renderer), so the visual result still reads
+     "sign, bounds, integrand". */
+  if(tn==="intg") return slotDigits(n.body)+slotDigits(n.lower)+slotDigits(n.upper);
   if(tn==="deriv") return 4+(n.at?arrDigits(n.at):0)+1+(n.body?arrDigits(n.body):0)+1+(n.at?arrDigits(n.at):0);
   if(tn==="sum"||tn==="prod") return 1+(n.upper?arrDigits(n.upper):0)+(n.lower?arrDigits(n.lower):0)+1+(n.body?arrDigits(n.body):0)+1;
   return 1;
 }
 function arrDigits(a){ var t=0; for(var k=0;k<a.length;k++) t+=digitsIn(a[k]); return t; }
+/* A template slot always contributes at least one digit-width so that an empty
+   numerator/denominator still has a cursor position and can be navigated into. */
+function slotDigits(a){ return Math.max(1, arrDigits(a)); }
 function tokenStart(arr,j){ var t=0; for(var k=0;k<j;k++) t+=digitsIn(arr[k]); return t; }
+/* ---- 2. conversion between digit offsets and token indices ----
+   A digit offset falls either INSIDE one token (tokenAt) or on the boundary
+   between two of them (insertIndex gives the gap). Getting this distinction
+   right is what makes "12" + "+" land after the number instead of before it. */
 /* Digit-offset -> index of the token the caret is STRICTLY inside.
    It reports -1 whenever the offset falls on a token boundary. */
 function tokenAtPos(arr,pos){
@@ -790,11 +1055,19 @@ function leftToken(arr,pos){
   var i=insertIndex(arr,pos);
   return i>0?arr[i-1]:null;
 }
-/* last token, but only when the caret sits exactly at its trailing edge */
-function tokenEnd(arr,pos){
-  if(!arr.length || pos<arrDigits(arr)) return null;
-  var t=arr[arr.length-1];
-  return (offsetInToken(arr,pos)===digitsIn(t))?t:null;
+/* token whose trailing edge is exactly at pos, regardless of whether it is
+   the last token in the array. Used by DEL when the caret sits just right of
+   a composite node so it can step inside and delete the last digit of the
+   node's last slot instead of removing the whole node. */
+function tokenAtTrailingEdge(arr,pos){
+  if(pos<=0) return null;
+  var t=0;
+  for(var k=0;k<arr.length;k++){
+    var d=digitsIn(arr[k]);
+    if(pos===t+d) return arr[k];
+    t+=d;
+  }
+  return null;
 }
 /* split "12" so a token can be inserted between its digits */
 function splitNumberAt(arr,idx,at){
@@ -804,10 +1077,39 @@ function splitNumberAt(arr,idx,at){
   if(at<=0||at>=str.length) return;
   arr.splice(idx,1,node("num",{v:str.slice(0,at)}),node("num",{v:str.slice(at)}));
 }
+/* ---- 3. frame bookkeeping: entering/leaving template slots ---- */
 function resetCursor(){ stack=[{arr:root,pos:0}]; }
 function clearInput(){ root.length=0; resetCursor(); S.resultShown=false; S.error=null; }
 function startFreshIfResult(){
   if(S.resultShown){ root.length=0; resetCursor(); S.resultShown=false; }
+}
+/* Leaving the answer view to EDIT: keep what is in the expression but bring the
+   caret back and take the answer line down. Typing already did this through
+   startFreshIfResult(); without this, DEL and the arrow keys edited the
+   expression behind a frozen answer with no caret, which looks like the key did
+   nothing at all. */
+/* Coming back from an answer the caret is placed on the spot the key asks for,
+   because the position left over from before "=" is arbitrary:
+     LEFT / DEL - the END, so the next edit acts on what was typed last
+     RIGHT      - the START, so the next edit acts on what was typed first
+/* Leaving the answer view places the caret explicitly, because the position it
+   had before "=" is arbitrary while the caret is hidden: LEFT / DEL work from
+   the end of the expression and RIGHT from the start. `afterAnswer` marks the one
+   key press that does this, so it does not then move a second time. */
+var afterAnswer=false;
+function leaveResultView(){
+  if(!S.resultShown) return;
+  S.resultShown=false;              /* keep the expression, take the answer down */
+  unwindCursor();
+  stack[0].pos=0;                   /* RIGHT's landing spot; LEFT overrides it */
+  afterAnswer=true;
+}
+/* any other key ends the answer-browsing state */
+function clearAfterAnswer(){ afterAnswer=false; }
+/* collapse the cursor path back to the top level (used when a screen change
+   invalidates the template the caret was inside) */
+function unwindCursor(){
+  while(stack.length>1) stack.pop();
 }
 function ins(n){
   var c=cur(), i=insertIndex(c.arr,c.pos);
@@ -834,7 +1136,9 @@ function slotKeys(n){
     case "abs": return ["body"];
     case "func": return ["arg"];
     case "logbase": return ["base","arg"];
-    case "intg": return ["lower","upper","body"];
+    /* the caret walks integrand -> lower -> upper even though the bounds are
+       printed before the integrand */
+    case "intg": return ["body","lower","upper"];
     case "deriv": return ["body","at"];
     case "sum": return ["lower","upper","body"];
     case "prod": return ["lower","upper","body"];
@@ -849,6 +1153,9 @@ function autoSlot(n){
   if(n.t==="pow") return n.base.length?"exp":"base";
   if(n.t==="root") return n.n.length?"body":"n";
   if(n.t==="logbase") return n.base.length?"arg":"base";
+  /* an integral is written sign, bounds, integrand - so the integrand is the
+     leftmost slot and is where the caret starts */
+  if(n.t==="intg") return "body";
   return ks[0];
 }
 function firstSlot(n){ return autoSlot(n); }
@@ -891,18 +1198,130 @@ function leaveField(dir){
   if(idx<0) idx=0;
   p.pos=tokenStart(p.arr,idx)+(dir<0?0:digitsIn(f.node));
 }
+/* When the cursor has just moved to a digit offset that lies inside a composite
+   node, push frame(s) down to the innermost slot so editing happens in the right
+   place. Boundaries between slots are left in the parent frame; the caller's
+   next LEFT/RIGHT/UP/DOWN will cross them as needed. */
+function descendAtCursor(){
+  while(true){
+    var c=cur();
+    var n=tokenAt(c.arr, c.pos);
+    if(!n) break;
+    var ks=slotKeys(n);
+    if(!ks) break;
+    /* c.pos is an offset into the whole ARRAY, so measure it from the start of
+       this node before comparing it against the slot widths */
+    var off=c.pos-tokenStart(c.arr,c.arr.indexOf(n));
+    var slot=null, rel=0;
+    switch(n.t){
+      case "frac":{
+        var nd=slotDigits(n.num);
+        if(off <= nd){ slot="num"; rel=off; }
+        else { slot="den"; rel=off-nd; }
+        break;
+      }
+      case "mixed":{
+        var wd=slotDigits(n.whole), nd=slotDigits(n.num);
+        if(off <= wd){ slot="whole"; rel=off; }
+        else if(off <= wd+nd){ slot="num"; rel=off-wd; }
+        else { slot="den"; rel=off-wd-nd; }
+        break;
+      }
+      case "pow":{
+        var bd=slotDigits(n.base);
+        if(off <= bd){ slot="base"; rel=off; }
+        else { slot="exp"; rel=off-bd; }
+        break;
+      }
+      case "sqrt":{
+        slot="body"; rel=off;
+        break;
+      }
+      case "root":{
+        var nd=slotDigits(n.n);
+        if(off <= nd){ slot="n"; rel=off; }
+        else { slot="body"; rel=off-nd; }
+        break;
+      }
+      case "paren": case "abs":{
+        slot="body"; rel=off;
+        break;
+      }
+      case "func":{
+        slot="arg"; rel=off;
+        break;
+      }
+      case "logbase":{
+        var bd=slotDigits(n.base);
+        if(off <= bd){ slot="base"; rel=off; }
+        else { slot="arg"; rel=off-bd; }
+        break;
+      }
+      case "intg":{
+        var bd=slotDigits(n.body), ld=slotDigits(n.lower);
+        if(off <= bd){ slot="body"; rel=off; }
+        else if(off <= bd+ld){ slot="lower"; rel=off-bd; }
+        else { slot="upper"; rel=off-bd-ld; }
+        break;
+      }
+      case "deriv":{
+        var bd=slotDigits(n.body);
+        if(off <= bd){ slot="body"; rel=off; }
+        else { slot="at"; rel=off-bd; }
+        break;
+      }
+      case "sum": case "prod":{
+        var ld=slotDigits(n.lower), ud=slotDigits(n.upper);
+        if(off <= ld){ slot="lower"; rel=off; }
+        else if(off <= ld+ud){ slot="upper"; rel=off-ld; }
+        else { slot="body"; rel=off-ld-ud; }
+        break;
+      }
+    }
+    if(!slot) break;
+    var slotArr=n[slot];
+    rel=Math.max(0, Math.min(rel, arrDigits(slotArr)));
+    stack.push({arr:slotArr, pos:rel, node:n, slot:slot});
+  }
+}
+/* ---- 4. movement ---- */
 function doLeft(){
   var c=cur();
+  if(afterAnswer){
+    /* first LEFT after an answer: land on the far right */
+    unwindCursor();
+    stack[0].pos=arrDigits(root);
+    afterAnswer=false;
+    return;
+  }
+  /* The two ends of the expression are joined: stepping left past the very
+     start lands on the very end. Only the top level wraps - inside a template
+     slot the caret must stay in that slot. */
+  if(stack.length<=1 && c.pos<=0 && arrDigits(c.arr)>0){
+    stack[0].pos=arrDigits(c.arr);
+    return;
+  }
   if(c.pos>0){
-    var j=insertIndex(c.arr,c.pos)-1;         /* token just left of the caret */
-    var host=tokenAt(c.arr,c.pos);            /* the caret is inside this one */
-    if(host===null && j>=0) host=c.arr[j];    /* or at its trailing edge */
+    /* Stepping onto a template must land in its LAST slot, not somewhere in the
+       middle of its digit span: moving the offset back by one and then
+       descending would stop inside whatever slot happens to contain that
+       offset, which is why LEFT from "∫ … |" used to reach the lower limit
+       instead of the upper one. */
+    var host=tokenAt(c.arr,c.pos);
+    var j=insertIndex(c.arr,c.pos)-1;
+    if(host===null && j>=0) host=c.arr[j];        /* caret at a token's edge */
+    if(host && host.t!=="num" && slotKeys(host)){
+      c.pos=tokenStart(c.arr,j);
+      enterEnd(host,lastSlot(host));
+      return;
+    }
     if(host && host.t==="num" && offsetInToken(c.arr,c.pos)>0){
-      c.pos--; return;                        /* one digit back within a number */
+      c.pos--;                                    /* one digit back in a number */
+      return;
     }
     if(j>=0){
       var pv=c.arr[j], sk=lastSlot(pv);
-      if(sk){ enterEnd(pv,sk); return; }    /* step into the template */
+      if(sk){ enterEnd(pv,sk); return; }
       c.pos=tokenStart(c.arr,j);
       return;
     }
@@ -922,17 +1341,21 @@ function doLeft(){
 function doRight(){
   var c=cur();
   var total=arrDigits(c.arr);
+  if(afterAnswer){
+    /* first RIGHT after an answer: land on the far left */
+    unwindCursor();
+    stack[0].pos=0;
+    afterAnswer=false;
+    return;
+  }
+  /* stepping right past the very end lands on the very start (see doLeft) */
+  if(stack.length<=1 && total>0 && c.pos>=total){
+    stack[0].pos=0;
+    return;
+  }
   if(c.pos<total){
-    var i=insertIndex(c.arr,c.pos);           /* gap the caret sits in */
-    var host=tokenAt(c.arr,c.pos);
-    if(host===null && i>0) host=c.arr[i-1];   /* or at its trailing edge */
-    if(host && host.t==="num" && offsetInToken(c.arr,c.pos)<digitsIn(host)){
-      c.pos++; return;                        /* one digit on within a number */
-    }
-    var nx=(i<c.arr.length)?c.arr[i]:null;
-    var sk=nx?firstSlot(nx):null;
-    c.pos=Math.min(tokenStart(c.arr,i)+(nx?digitsIn(nx):0),arrDigits(c.arr));
-    if(sk) enter(nx,sk);
+    c.pos++;
+    descendAtCursor();
     return;
   }
   if(stack.length>1){
@@ -950,6 +1373,7 @@ function doRight(){
    re-entered and its last digit removed. */
 /* Delete the single digit left of the caret. Returns the caret offset to use,
    or -1 when there was nothing to delete. */
+/* ---- 5. deletion ---- */
 function delDigitIn(arr,pos){
   var at=offsetInToken(arr,pos);
   var j=insertIndex(arr,pos)-1;
@@ -969,13 +1393,100 @@ function delDigitIn(arr,pos){
   }
   return -1;
 }
+/* true when the caret sits in the integrand (the integral's first slot in
+   navigation order), reported together with the node so callers can act on it */
+function caretInIntegrand(){
+  var c=cur();
+  return (c.node && c.node.t==="intg" && c.slot==="body") ? c.node : null;
+}
+/* Remove the integral wrapper around `n` and leave its contents in the parent
+   array, i.e. pull the integrand out. Returns the frame the caret should move
+   to, or null when `n` is not an integral. */
+function detachIntegral(n){
+  for(var d=stack.length-1;d>0;d--){
+    if(stack[d].node===n){
+      var parent=stack[d-1];
+      stack.length=d;
+      var idx=parent.arr.indexOf(n);
+      if(idx<0) return null;
+      var body=n.body.slice();
+      parent.arr.splice.apply(parent.arr,[idx,1].concat(body));
+      parent.pos=tokenStart(parent.arr,idx)+arrDigits(body);
+      return parent;
+    }
+  }
+  return null;
+}
+/* Walk backwards through the regions of `node` from `fromSlot`, deleting the
+   last digit of the first non-empty region found. Returns true when a digit was
+   removed, false when everything to its left is empty (i.e. the caret is at the
+   template's left edge and there is nothing left to erase).
+
+   The regions are taken in slotKeys() order, i.e. the order the caret walks
+   them, so "the previous region" means "the one LEFT/RIGHT would have come
+   from". The stack is rewound by one frame before entering the target slot, so
+   a template nested inside the caller is left correctly. */
+function delIntoPreviousSlot(node,fromSlot,order){
+  var keys=order||slotKeys(node);
+  var i=keys?keys.indexOf(fromSlot):-1;
+  for(var k=i-1;k>=0;k--){
+    var arr=node[keys[k]];
+    if(!arr) continue;
+    if(arrDigits(arr)>0){
+      stack.pop(); enterEnd(node,keys[k]);
+      var f=cur(), np=delDigitIn(f.arr,f.pos);
+      if(np>=0) f.pos=np;
+      return true;
+    }
+  }
+  return false;
+}
 function doDel(){
   var c=cur();
+  /* --- integral rules -------------------------------------------------------
+     The caret walks the integral as integrand -> lower -> upper. DEL follows
+     that walk:
+
+       * in the middle of a region it just erases one digit to the left;
+       * at the left edge of a later region it erases the last digit of the
+         previous region instead (so DEL at the start of the lower bound eats
+         the end of the integrand);
+       * at the left edge of the FIRST region, i.e. the left edge of the whole
+         template, the integral itself is removed - and, because the integrand
+         may still hold something, its contents are left behind in the parent
+         expression rather than being thrown away.
+
+     "Empty" uses arrDigits(), not slotDigits(): slotDigits() forces a minimum
+     of one so empty slots stay reachable by the caret, which would make every
+     slot look non-empty here. */
+  var intNode=(c.node && c.node.t==="intg" && (c.slot==="body"||c.slot==="lower"||c.slot==="upper")) ? c.node : null;
+  /* At offset 0 the caret sits BEFORE the node's first character, so tokenAt()
+     cannot see it; the enclosing template is still known from the frame. */
+  if(!intNode){
+    for(var d=stack.length-1;d>0;d--){
+      var fr=stack[d];
+      if(fr.pos<=0 && fr.node && fr.node.t==="intg"){ intNode=fr.node; c=fr; break; }
+    }
+  }
+  if(intNode){
+    if(c.pos>0){
+      var np0=delDigitIn(c.arr,c.pos);
+      if(np0>=0) c.pos=np0;
+      return;
+    }
+    /* at the left edge of this region: walk backwards through the PRINTED
+       order, or drop the template when nothing is left of it. The caret path is
+       always [node, slot] at this point (tokenAt found the node, or the frame
+       loop below did), so popping one frame rewinds into the node's parent. */
+    if(delIntoPreviousSlot(intNode,c.slot)) return;
+    detachIntegral(intNode);
+    return;
+  }
   if(c.pos>0){
     /* caret sitting just right of a template: step back inside it and delete
        its last digit, so "⌐12/34 |" + DEL leaves 12/3 instead of dropping the
        whole fraction */
-    var edge=tokenEnd(c.arr,c.pos);
+    var edge=tokenAtTrailingEdge(c.arr,c.pos);
     var ek=edge?lastSlot(edge):null;
     if(ek){
       enterEnd(edge,ek);
@@ -1023,8 +1534,29 @@ function doField(dir){
     var want=c.pos;                        /* digit offset to keep across slots */
     stack.pop(); enter(c.node,keys[j]);
     var t=cur();
-    t.pos=Math.max(0,Math.min(want,arrDigits(t.arr)));
+    t.pos=Math.max(0,Math.min(want,arrDigits(t.arr)));   /* real offset inside the slot */
     return true;
+  }
+  /* Not inside a template: DOWN moves forward like RIGHT and descends into the
+     composite node the caret lands in, so "⌐12/34 ⇥ |" re-enters the fraction
+     rather than doing nothing. */
+  if(dir>0){
+    var tot=arrDigits(c.arr);
+    if(c.pos<tot){
+      c.pos++;
+      descendAtCursor();
+      return true;
+    }
+    if(stack.length>1){
+      var f2=stack[stack.length-1];
+      var k2=slotKeys(f2.node);
+      if(k2){
+        var ki2=k2.indexOf(f2.slot);
+        if(ki2>=0 && ki2<k2.length-1){ stack.pop(); enter(f2.node,k2[ki2+1]); return true; }
+      }
+      leaveField(1);
+      return true;
+    }
   }
   return false;
 }
@@ -1039,9 +1571,10 @@ function caretAtEnd(c){ return c.pos>=arrDigits(c.arr); }
 /* the number token whose trailing edge the caret is at, if it is the last one */
 function numToExtend(c){
   if(!caretAtEnd(c)) return null;
-  var t=tokenEnd(c.arr,c.pos);
+  var t=tokenAtTrailingEdge(c.arr,c.pos);
   return (t && t.t==="num")?t:null;
 }
+/* ---- 6. insertion: one helper per key ---- */
 function inputDigit(d){
   startFreshIfResult();
   var c=cur();
@@ -1085,7 +1618,7 @@ function inputOp(o){
   if(S.resultShown){ root=[T_var("Ans")]; stack=[{arr:root,pos:1}]; S.resultShown=false; }   /* pos 1 == just after Ans */
   var c=cur();
   if(caretAtEnd(c)){
-    var pv=tokenEnd(c.arr,c.pos);
+    var pv=tokenAtTrailingEdge(c.arr,c.pos);
     if(pv && pv.t==="op" && pv.v!=="\u2220"){ pv.v=o; return; }
   }
   ins(T_op(o));
@@ -1150,13 +1683,20 @@ function inputCloseParen(){
   ins(T_op(")"));
 }
 function inputPost(v){ startFreshIfResult(); ins(T_post(v)); }
-function inputIntg(){ startFreshIfResult(); var f=T_intg(); ins(f); enter(f,"lower"); }
+/* Navigation order is integrand -> lower -> upper, so the caret starts in the
+   integrand even though it is printed after the bounds. */
+function inputIntg(){ startFreshIfResult(); var f=T_intg(); ins(f); enter(f,"body"); }
 function inputDeriv(){ startFreshIfResult(); var f=T_deriv(); ins(f); enter(f,"body"); }
 function inputSum(){ startFreshIfResult(); var f=T_sum(); ins(f); enter(f,"lower"); }
 function inputProd(){ startFreshIfResult(); var f=T_prod(); ins(f); enter(f,"lower"); }
 function inputLogBase(){ startFreshIfResult(); var f=T_logbase(); ins(f); enter(f,"base"); }
 
 /* ============================ EVALUATOR ============================ */
+/* Expression tree -> value, independent of the DOM.
+   The real and complex paths share one code path: every c* helper below
+   accepts either a plain number or a {re,im} pair, so plain arithmetic never
+   pays for complex support. evaluateList() is a small recursive-descent parser
+   over the token array; trig/log helpers apply the current angle unit. */
 function getVar(name){
   if(name==="Ans") return S.hasAns?S.ans:0;
   if(name==="M") return S.M;
@@ -1405,6 +1945,10 @@ function evalSeries(t,isProd){
 }
 
 /* ============================ MENUS ============================ */
+/* Every text menu on the LCD (mode list, SETUP, OPTN, CONST, conversion...) is
+   the same structure: {type,index,cols,title,items}. openMenu() builds the item
+   list for a type, renderMenu() draws it and handleMenuKey() routes digits,
+   arrows, = and AC while a menu is open. */
 var CONST_LIST=[
   ["c","Speed of light",299792458],
   ["g","Gravitation",9.80665],
@@ -1545,6 +2089,8 @@ function selectMenuItem(){
 }
 
 /* ============================ SETTINGS ============================ */
+/* The SETUP menu actions (angle unit, input/output, number format, fraction
+   result) and the two reset helpers. */
 function doSetup(id){
   var m=S.menu;
   if(id==="angle"){
@@ -1568,6 +2114,7 @@ function resetSettings(){ S.angle="DEG"; S.io="MATH"; S.fmt={mode:"NORM",digits:
 function resetMemory(){ for(var k in S.vars) S.vars[k]=0; S.M=0; S.ans=0; S.hasAns=false; S.history=[]; }
 
 /* ============================ MODES ============================ */
+/* Entering a calculation mode: reset that mode's working data and redraw. */
 function setMode(mode){
   S.mode=mode; S.menu=null; S.error=null;
   clearInput();
@@ -1582,6 +2129,8 @@ function setMode(mode){
 }
 
 /* ============================ BASE-N ============================ */
+/* Radix conversion for BASE mode: values are drawn with baseString() and typed
+   digits are parsed with the current base. */
 var BASES={dec:10,hex:16,bin:2,oct:8};
 function baseString(v,base){
   var x=Math.round(v);
@@ -1594,6 +2143,8 @@ function baseSub(base){ var m={10:"10",16:"16",2:"2",8:"8"}; return m[base]||Str
 function parseBase(str,base){ var n=parseInt(str,base); if(isNaN(n)) throw err("Syntax ERROR"); return n; }
 
 /* ============================ MATRIX ============================ */
+/* Dense 1x1..4x4 matrices held as arrays of rows. Pure maths only - no DOM:
+   add/sub/mul, determinant, adjugate inverse and transpose. */
 function matIdent(n){ var m=[]; for(var i=0;i<n;i++){ var row=[]; for(var j=0;j<n;j++) row.push(i===j?1:0); m.push(row);} return m; }
 function matAdd(a,b){ if(a.length!==b.length||a[0].length!==b[0].length) throw err("Dimension ERROR"); return a.map(function(r,i){return r.map(function(v,j){return v+b[i][j];});}); }
 function matSub(a,b){ return a.map(function(r,i){return r.map(function(v,j){return v-b[i][j];});}); }
@@ -1622,6 +2173,7 @@ function matInv(a){
 function matTrn(a){ var out=[]; for(var j=0;j<a[0].length;j++){ var row=[]; for(var i=0;i<a.length;i++) row.push(a[i][j]); out.push(row);} return out; }
 
 /* ============================ VECTOR ============================ */
+/* 2D/3D vectors as plain arrays: add/sub, dot, cross, norm. */
 function vAdd(a,b){ if(a.length!==b.length) throw err("Dimension ERROR"); return a.map(function(v,i){return v+b[i];}); }
 function vSub(a,b){ return a.map(function(v,i){return v-b[i];}); }
 function vDot(a,b){ if(a.length!==b.length) throw err("Dimension ERROR"); var s=0; for(var i=0;i<a.length;i++) s+=a[i]*b[i]; return s; }
@@ -1629,6 +2181,8 @@ function vCross(a,b){ if(a.length!==3||b.length!==3) throw err("Dimension ERROR"
 function vNorm(a){ return Math.sqrt(vDot(a,a)); }
 
 /* ============================ STATISTICS ============================ */
+/* STAT mode maths: 1-variable and 2-variable summaries plus the linear
+   regression coefficients. */
 function statValues(){
   var rows=S.stat.rows.filter(function(r){ return r[0]!=="" || (S.stat.type==="2var" && r[1]!==""); });
   var xs=[],ys=[];
@@ -1685,6 +2239,8 @@ function polyRoots(coeff){
 }
 
 /* ============================ (re)RESOLVE CONSTANT CONV ============================ */
+/* Look up a scientific constant or unit-conversion factor by name, used by the
+   CONST and CONV menus. */
 function convConstValue(name){
   for(var i=0;i<CONV_LIST.length;i++){
     if(("CONV:"+CONV_LIST[i][0])===name){
@@ -1698,6 +2254,10 @@ function convConstValue(name){
 }
 
 /* ============================ RENDER ============================ */
+/* One entry point, render(), which dispatches on the current mode, and one
+   draw function per screen: calculation, menus, matrix, vector, statistics,
+   table, equation, inequality and ratio. renderStatus() paints the status bar
+   indicators above them. These read state and write HTML only. */
 function render(){
   var calcEl=document.getElementById("calc");
   if(calcEl){
@@ -1776,6 +2336,7 @@ function renderError(){
     '<div class="prompt" style="text-align:center;font-size:10px;margin-top:12px">[AC] : Cancel</div></div>';
 }
 function renderExprScreen(){
+  hideCaret=!!(S.resultShown||S.error||S.menu);
   var html='<div class="exprwrap">';
   if(S.stoPending){ html+='<div class="prompt">STO \u2192 ?</div>'; }
   if(S.calcPending){ html+='<div class="prompt">'+esc(S.calcPending.prompt)+'</div>'; }
@@ -1982,6 +2543,9 @@ function renderRatio(){
 }
 
 /* ============================ CLEAR / ANS ============================ */
+/* The commands behind the CALC, = and STO keys: evaluate the expression and
+   push it to history, store a variable, and the numerical SOLVE used by
+   SHIFT+CALC. */
 function doEquals(){
   if(S.mode==="TABLE"){ tableEquals(); return; }
   if(S.mode==="MATRIX"||S.mode==="VECTOR"||S.mode==="STAT"||S.mode==="EQUATION"||S.mode==="INEQ"||S.mode==="RATIO"){
@@ -2095,6 +2659,9 @@ function collectVars(arr){
 }
 
 /* ============================ MODE KEY HANDLERS ============================ */
+/* Keyboard handling for the modes whose input is not the expression line.
+   These edit a table of cells rather than `root`, so they take the raw key id
+   and return true when they consumed it. */
 function matrixConfirm(){
   var e=S.matrix.edit;
   if(S.matrix.buf!==null&&S.matrix.buf!==undefined){
@@ -2319,6 +2886,12 @@ function solveRatio(){
 }
 
 /* ============================ DISPATCH ============================ */
+/* The single entry point for every key press, whatever its source.
+   Order matters: mode-specific grids get first refusal, then global keys
+   (MENU/OPTN/CALC/AC/DEL/=/arrows), then typing. SHIFT and ALPHA are consumed
+   here - they are read into locals `shifted`/`alphaed` and cleared, so a
+   modifier only ever applies to the next key. Historical state helpers
+   (historyUp/Down/loadHistory) live at the end of this section. */
 function varNameFromKey(id){
   var map={"NEG":"A","DMS":"B","INV":"C","SIN":"D","COS":"E","TAN":"F","STO":"Z","RPAREN":"X","SD":"Y","MPLUS":"M"};
   return map[id];
@@ -2364,22 +2937,27 @@ function dispatch(id){
   if(S.mode==="INEQ" && S.eq.coeff.length){ if(handleEqEdit(id)) return; }
 
   switch(id){
-    case "MENU": if(shifted){ openMenu("SETUP"); return; } openMenu("MAIN"); return;
+    case "MENU": clearAfterAnswer(); if(shifted){ openMenu("SETUP"); return; } openMenu("MAIN"); return;
     case "OPTN":
-      if(shifted){ openMenu("CONST"); return; }
-      openMenu("OPTN"); return;
+      clearAfterAnswer(); openMenu("OPTN"); return;
     case "CALC":
+      clearAfterAnswer();
       if(shifted){ doSolve(); return; }
       doCalc(); return;
-    case "AC": if(shifted){ S.power=false; render(); return; } doAC(); render(); return;
-    case "DEL": doDel(); render(); return;
+    case "AC": clearAfterAnswer(); if(shifted){ S.power=false; render(); return; } doAC(); render(); return;
+    case "DEL":
+      /* after an answer DEL acts on the END of the expression; during normal
+         editing it acts wherever the caret is */
+      if(S.resultShown){ leaveResultView(); stack[0].pos=arrDigits(root); }
+      doDel(); render(); return;
     case "EQUALS":
+      clearAfterAnswer();
       if(shifted){ toggleExact(); return; }
       doEquals(); return;
-    case "LEFT": doLeft(); render(); return;
-    case "RIGHT": doRight(); render(); return;
-    case "UP": if(!doField(-1)) historyUp(); return;
-    case "DOWN": if(!doField(1)) historyDown(); return;
+    case "LEFT": leaveResultView(); doLeft(); render(); return;
+    case "RIGHT": leaveResultView(); doRight(); render(); return;
+    case "UP": leaveResultView(); if(!doField(-1)) historyUp(); else render(); return;
+    case "DOWN": leaveResultView(); if(!doField(1)) historyDown(); else render(); return;
     case "OK": doEquals(); return;
   }
 
@@ -2585,6 +3163,9 @@ function loadHistory(){
 }
 
 /* ============================ OPTN ACTIONS ============================ */
+/* The action behind each OPTN menu entry, which differs per mode: templates in
+   CALC/CMPLX, radix and logic operators in BASE, and the operation menus for
+   MATRIX and VECTOR. */
 function doOptionAction(id){
   if(S.mode==="COMPLEX" || S.mode==="CMPLX" || S.mode==="CALC"){
     if(id==="abs"){ inputAbs(); }
@@ -2678,9 +3259,11 @@ function vectorAction(id){
 }
 
 /* ============================ PHYSICAL KEYBOARD ============================ */
+/* Maps real keyboard events onto the same key ids the on-screen pad uses, so
+   both routes end in dispatch(). */
 var KEYMAP={
   "0":"0","1":"1","2":"2","3":"3","4":"4","5":"5","6":"6","7":"7","8":"8","9":"9",
-  ".":"DOT",",":"DOT","+":"ADD","-":"SUB","*":"MUL","/":"DIV","(":"LPAREN",")":"RPAREN",
+  ".":"DOT",",":"DOT","+":"ADD","-":"SUB","*":"MUL","/":"FRAC","(":"LPAREN",")":"RPAREN",
   "Enter":"EQUALS","=":"EQUALS","Backspace":"DEL","Escape":"AC","Delete":"DEL",
   "ArrowUp":"UP","ArrowDown":"DOWN","ArrowLeft":"LEFT","ArrowRight":"RIGHT",
   "s":"SHIFT","a":"ALPHA","m":"MENU","o":"OPTN","c":"CALC","x":"XKEY",
@@ -2698,6 +3281,7 @@ document.addEventListener("keydown",function(e){
 });
 
 /* ============================ MODE ENTRY DIM HANDLERS ============================ */
+/* The size/dimension prompts shown when starting a matrix or vector edit. */
 function handleMatrixDimKeys(){}
 function matrixDimSelect(dim){
   var e=S.matrix.edit;
@@ -2729,12 +3313,24 @@ dispatch=function(id){
 };
 
 /* ============================ INIT ============================ */
+/* Boot: seed the empty expression, draw the first frame, and publish the small
+   test/debug API on window.__calc. */
 S.resultHTML="";
 (function initSeed(){ root.length=0; resetCursor(); })();
 render();
 
 window.__calc = { S:S, dispatch:function(id){ dispatch(id); }, getExpr:function(){ return root; }, getCursor:function(){ var c=cur(); return {depth:stack.length,pos:c.pos,slot:c.slot||null,node:c.node?c.node.t:null,path:stack.map(function(f){ return f.slot||"root"; })}; }, setExpr:function(a){ root=a; resetCursor(); }, evalExpr:function(){ return evaluateList(root); }, fmt:function(v){ return formatValue(v); }, _toFrac:function(x){ return toFrac(x,10000); }, _isInt:isInt };
-})();
+
+/* Test hook: ?keys=1%20ADD%202 replays a key sequence on load so the page can be
+   captured headlessly in any state. Harmless in normal use. */
+(function(){
+  try{
+    var q=/[?&]keys=([^&]*)/.exec(window.location.search);
+    if(!q) return;
+    var seq=decodeURIComponent(q[1]).split(/[\s,]+/).filter(Boolean);
+    for(var i=0;i<seq.length;i++) dispatch(seq[i]);
+  }catch(e){}
+})();})();
 </script>
 </body>
 </html>
