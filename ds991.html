@@ -1099,9 +1099,12 @@ function digitsIn(n){
   if(tn==="frac") return slotDigits(n.num)+slotDigits(n.den);
   if(tn==="mixed") return slotDigits(n.whole)+slotDigits(n.num)+slotDigits(n.den);
   if(tn==="logbase") return 4+(n.base?arrDigits(n.base):0)+(n.arg?arrDigits(n.arg):0)+2;
-  /* a power needs its own caret positions or the caret lands ON the node instead
-     of after it: the base digits, the "^" itself, then the exponent */
-  if(tn==="pow") return slotDigits(n.base)+1+slotDigits(n.exp);
+  /* A power needs its own caret positions or the caret lands ON the node
+     instead of after it: the base digits, the "^", then the exponent. The "^"
+     is dropped when the exponent begins with a power, because that leading edge
+     is then the same place as the inner power's first position (see
+     powExpStartsWithPower). */
+  if(tn==="pow") return slotDigits(n.base)+(powExpStartsWithPower(n)?0:1)+slotDigits(n.exp);
   if(tn==="sqrt") return 1+(n.body?arrDigits(n.body):0);
   if(tn==="root") return 1+(n.n?arrDigits(n.n):0)+1+(n.body?arrDigits(n.body):0);
   /* The integral's slots are laid out in NAVIGATION order so that a single
@@ -1123,6 +1126,17 @@ function arrDigits(a){ var t=0; for(var k=0;k<a.length;k++) t+=digitsIn(a[k]); r
 /* A template slot always contributes at least one digit-width so that an empty
    numerator/denominator still has a cursor position and can be navigated into. */
 function slotDigits(a){ return Math.max(1, arrDigits(a)); }
+/* Does this power's exponent BEGIN with another power?
+ *
+ * When it does, the "^" and the inner power's own leading edge are the same
+ * place on screen, so counting a separate offset for the "^" would give one
+ * spot two caret positions and make every nesting boundary cost an extra key
+ * press. The inner power's width already covers that spot, so it is not added
+ * on top. */
+function powExpStartsWithPower(n){
+  var e=n && n.exp;
+  return !!(e && e.length && e[0] && e[0].t==="pow");
+}
 function tokenStart(arr,j){ var t=0; for(var k=0;k<j;k++) t+=digitsIn(arr[k]); return t; }
 /* ---- 2. conversion between digit offsets and token indices ----
    A digit offset falls either INSIDE one token (tokenAt) or on the boundary
@@ -1488,9 +1502,16 @@ function descendAtCursor(){
         break;
       }
       case "pow":{
+        /* Offsets of a power: [base block][^][exponent block].
+           - normally the base block is 0..bd inclusive (bd is the "^" itself)
+           - when the exponent BEGINS with a power there is no "^" offset, so
+             the base block is only 0..bd-1 and the boundary already belongs to
+             the exponent. Sending the boundary to the base here was what made
+             the caret stop twice at one place. */
         var bd=slotDigits(n.base);
-        if(off <= bd){ slot="base"; rel=off; }
-        else { slot="exp"; rel=off-bd; }
+        var hasCaret=!powExpStartsWithPower(n);
+        if(hasCaret ? (off<=bd) : (off<bd)){ slot="base"; rel=Math.min(off,arrDigits(n.base)); }
+        else { slot="exp"; rel=off-(hasCaret?bd+1:bd); }
         break;
       }
       case "sqrt":{
@@ -1542,42 +1563,9 @@ function descendAtCursor(){
     var slotArr=n[slot];
     rel=Math.max(0, Math.min(rel, arrDigits(slotArr)));
     stack.push({arr:slotArr, pos:rel, node:n, slot:slot});
-    normalizeExpStart();
   }
 }
 /* ---- 4. movement ---- */
-/* An exponent that begins with a power has no position of its own at its very
- * start: that spot IS the first position of that power's base. Stepping there
- * would expose two caret states for one place on screen (the outer exponent's
- * offset 0 and the inner base's offset 0), which is what made the caret need an
- * extra press at every nesting boundary. Descend instead, so one place on
- * screen has exactly one state:
- *
- *     2^(3^4)   exp@0/d2  ==  base@0/d3   ->  keep only base@0/d3
- */
-/* An exponent whose content begins with a power has no position of its own at
- * its very start: that place on screen IS the end of that inner power's base.
- *
- *     2^(3^4)      outer exp offset 0  ==  inner base offset 1
- *
- * Keeping both states alive made every nesting boundary cost an extra key
- * press: the caret stopped twice at one spot. Whenever the caret lands there it
- * is moved on into the inner base, so one place on screen has one state. The
- * horizontal neighbours of that place push BACK into the outer exponent frame
- * rather than re-entering through the frame walk, which would recreate it. */
-function expStartInner(f){
-  var e=(f && f.slot==="exp") ? f.arr : null;
-  var first=e && e[0];
-  return (first && first.t==="pow" && arrDigits(first.base)>0) ? first : null;
-}
-function normalizeExpStart(){
-  var f=cur();
-  var inner=expStartInner(f);
-  if(!inner) return false;
-  stack.pop();
-  stack.push({arr:inner.base,pos:arrDigits(inner.base),node:inner,slot:"base"});
-  return true;
-}
 function doLeft(){
   var c=cur();
   if(afterAnswer){
@@ -2165,7 +2153,6 @@ function inputPow(){
   var base=takeOperand();
   var f=T_pow(base?[base]:[],[]);
   ins(f); enter(f,"exp");
-  normalizeExpStart();
 }
 function inputSquare(){ raisePower(2); }
 function inputCube(){ raisePower(3); }
