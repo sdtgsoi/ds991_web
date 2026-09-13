@@ -775,6 +775,18 @@ function renderNodeAt(n,at,ctx){
   }
   if(at<=0) return caretHTML()+renderNode(n,ctx);
   if(at>=digitsIn(n)) return renderNode(n,ctx)+caretHTML();
+  /* A power's digit span is [base][^][exp], so the offset right after the base
+     is the "^" itself. The caret can legitimately stand there - that is where
+     an exponent merge leaves it - and the markup has to break the node at that
+     point, otherwise the caret is drawn past the exponent:
+         123^45 with the caret at offset 3  ->  123|45                     */
+  if(n.t==="pow"){
+    var bd=arrDigits(n.base);          /* NOT slotDigits: its minimum of one
+                                          would fire at the wrong offset */
+    if(at===bd && arrDigits(n.exp)>0){
+      return '<span class="math">'+slotOrBox(n.base)+caretHTML()+renderExponent(n.exp,ctx)+'</span>';
+    }
+  }
   if(n.t==="paren"||n.t==="abs"){
     if(at===1) return '<span class="math paren">'+caretHTML()+'('+renderArr(n.body,ctx)+')</span>';
     if(at>=2+(n.body?arrDigits(n.body):0)) return '<span class="math paren">('+renderArr(n.body,ctx)+')'+caretHTML()+'</span>';
@@ -1530,9 +1542,42 @@ function descendAtCursor(){
     var slotArr=n[slot];
     rel=Math.max(0, Math.min(rel, arrDigits(slotArr)));
     stack.push({arr:slotArr, pos:rel, node:n, slot:slot});
+    normalizeExpStart();
   }
 }
 /* ---- 4. movement ---- */
+/* An exponent that begins with a power has no position of its own at its very
+ * start: that spot IS the first position of that power's base. Stepping there
+ * would expose two caret states for one place on screen (the outer exponent's
+ * offset 0 and the inner base's offset 0), which is what made the caret need an
+ * extra press at every nesting boundary. Descend instead, so one place on
+ * screen has exactly one state:
+ *
+ *     2^(3^4)   exp@0/d2  ==  base@0/d3   ->  keep only base@0/d3
+ */
+/* An exponent whose content begins with a power has no position of its own at
+ * its very start: that place on screen IS the end of that inner power's base.
+ *
+ *     2^(3^4)      outer exp offset 0  ==  inner base offset 1
+ *
+ * Keeping both states alive made every nesting boundary cost an extra key
+ * press: the caret stopped twice at one spot. Whenever the caret lands there it
+ * is moved on into the inner base, so one place on screen has one state. The
+ * horizontal neighbours of that place push BACK into the outer exponent frame
+ * rather than re-entering through the frame walk, which would recreate it. */
+function expStartInner(f){
+  var e=(f && f.slot==="exp") ? f.arr : null;
+  var first=e && e[0];
+  return (first && first.t==="pow" && arrDigits(first.base)>0) ? first : null;
+}
+function normalizeExpStart(){
+  var f=cur();
+  var inner=expStartInner(f);
+  if(!inner) return false;
+  stack.pop();
+  stack.push({arr:inner.base,pos:arrDigits(inner.base),node:inner,slot:"base"});
+  return true;
+}
 function doLeft(){
   var c=cur();
   if(afterAnswer){
@@ -1584,10 +1629,27 @@ function doLeft(){
   }
   if(stack.length>1){
     var f=stack[stack.length-1];
+    /* The start of an exponent that BEGINS with a power is not a place of its
+       own: it is the end of that inner power's base. Walking into it directly
+       keeps one spot on screen from having two caret states (exp@0 of the outer
+       exponent versus base@0 of the inner one), which is what made a nested
+       tower need an extra press at every level. */
+    /* leaving an inner base: its left neighbour is the outer exponent's entry
+       point, which normalisation pushes straight back in, so aim at the outer
+       base instead */
+    if(f.slot==="base" && c.pos<=0 && stack.length>2){ leaveField(-1); return; }
     var keys=slotKeys(f.node);
     if(keys){
       var ki=keys.indexOf(f.slot);
-      if(ki>0){ stack.pop(); enterEnd(f.node,keys[ki-1]); return; }  /* previous slot */
+      if(ki>0){
+        /* A power's regions do not sit side by side: LEFT from the base must
+           EXIT the power, not step into the exponent (that bounced the caret
+           back into the very box it had just left). Other templates keep the
+           region walk, which is what makes the fraction numerator/denominator
+           behave. */
+        if(f.node.t==="pow" && f.slot==="base"){ leaveField(-1); return; }
+        stack.pop(); enterEnd(f.node,keys[ki-1]); return;  /* previous slot */
+      }
     }
     leaveField(-1);
   }
@@ -1708,6 +1770,20 @@ function detachIntegral(n){
        123^(|^45)   -> 123^45   (the exponent is lifted one level down)
    The caret lands at the end of the base, i.e. exactly where the merged content
    ends, so repeated DEL keeps walking left as usual. */
+/* A base such as "123" is one token, but the caret has to be able to stand at
+   its END with the exponent contents following, so the number is cut there and
+   its digits become single-digit tokens. Nothing changes mathematically - only
+   the positions the caret can occupy. */
+function splitBaseTokens(base){
+  if(!base || !base.length) return;
+  var last=base[base.length-1];
+  if(!last || last.t!=="num") return;
+  var str=String(last.v);
+  if(str.length<2) return;
+  var parts=[];
+  for(var i=0;i<str.length;i++) parts.push(node("num",{v:str.charAt(i)}));
+  base.splice.apply(base,[base.length-1,1].concat(parts));
+}
 /* DEL at the START of an exponent box: drop that bracket and let everything it
    held move one level out, so nothing typed is lost.
  *
@@ -1760,21 +1836,17 @@ function mergeExponentIntoBase(node){
         var last=newBase.pop();
         newBase.push(T_pow([last], higher));
       }
-      parent.arr.splice.apply(parent.arr,[idx,1].concat(newBase));
-      /* The caret belongs just RIGHT OF THE BASE, i.e. exactly where the deleted
-         bracket began:
+      /* Split the base so that the ORIGINAL base stays its own token(s). The
+         caret must sit at the end of the original base, i.e. exactly where the
+         deleted bracket began, even when the content ran on into a number:
              123^(|45)    -> 123|45
              123^(|456)   -> 123|456
              123^(|^45)   -> 123|^45
-             123^(|45^67) -> 123|45^67
-         When a higher exponent survived, the last token is a power and its base
-         slot IS the "right of the base" position, so the caret goes in there at
-         its end; otherwise a plain offset after the base is enough. */
-      var tail=newBase[newBase.length-1];
-      if(tail && tail.t==="pow" && arrDigits(tail.exp)>0){
-        stack.push({arr:tail.base,pos:arrDigits(tail.base),node:tail,slot:"base"});
-        return;
-      }
+             123^(|45^67) -> 123|45^67      (not 12345|^67)
+         "123" and "456" must therefore stay separate tokens - merging them into
+         one number would leave the caret no place to stand. */
+      splitBaseTokens(outerBase);
+      parent.arr.splice.apply(parent.arr,[idx,1].concat(newBase));
       parent.pos=tokenStart(parent.arr,idx)+arrDigits(outerBase);
       return;
     }
@@ -2093,6 +2165,7 @@ function inputPow(){
   var base=takeOperand();
   var f=T_pow(base?[base]:[],[]);
   ins(f); enter(f,"exp");
+  normalizeExpStart();
 }
 function inputSquare(){ raisePower(2); }
 function inputCube(){ raisePower(3); }
