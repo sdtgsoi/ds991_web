@@ -563,7 +563,7 @@ console.log("\n--- power keys: the four contexts of the spec ---");
     "null@0");
   check("RIGHT then steps back into the base, not the empty box",
     (function(){ const c=run(["2","POW","LEFT","RIGHT"]); return c.getCursor().slot+"@"+c.getCursor().pos; })(),
-    "base@1");
+    "base@0");
 
   /* --- DEL at the START of an exponent box: drop that level --------------- */
   /* the bracket goes away and its contents are appended to the base */

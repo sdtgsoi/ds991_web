@@ -123,15 +123,14 @@ t("D1  2^(3|) DEL -> 2^box","2 POW 3 DEL",{line:"2|",tree:"pow{[N2]^[]}"});
 t("D2  2^(|) DEL -> 2","2 POW DEL",{line:"2|",tree:"N2"});
 t("D3  2^(|3) DEL -> 2|3","2 POW 3 LEFT DEL",{line:"2|3",tree:"N2,N3"});
 t("D4  123^(|45) DEL -> 123|45","1 2 3 POW 4 5 LEFT LEFT DEL",{line:"123|45",tree:"N123,N45"});
-t("D5  123^(|45^67) DEL -> 123|45^67","1 2 3 POW 4 5 POW 6 7 LEFT LEFT LEFT LEFT DEL",
+t("D5  123^(|45^67) DEL -> 123|45^67","1 2 3 POW 4 5 POW 6 7 LEFT LEFT LEFT LEFT LEFT DEL",
   {line:"123|4567",tree:"N123,pow{[N45]^[N67]}"});
 t("D6  123^(|^45) DEL -> 123|^45","1 2 3 POW POW 4 5 LEFT LEFT DEL",
   {line:"123|45",tree:"pow{[N123]^[N45]}"});
-t("D7  2^| (exp empty) DEL -> 2","RIGHT DEL",{line:"2|",tree:"N2"},{pre:[P([NT(2)],[])]});
-/* D8 after Phase 4: the base's right edge is no longer a LEFT stop (base@end and
-   exp@0 are one shared boundary, represented by exp@0). The state still exists
-   via UP, and there DEL still acts on the exponent. */
-t("D8  2^|3 (base edge via UP) DEL -> 2^box","2 POW 3 UP DEL",{line:"2|",tree:"pow{[N2]^[]}"});
+t("D7  2^| (exp empty) DEL -> 2","RIGHT RIGHT DEL",{line:"2|",tree:"N2"},{pre:[P([NT(2)],[])]});
+/* D8: the base side of the boundary (base@end) keeps its own stop one press
+   left of the exponent side, and DEL there acts on the exponent, not the base. */
+t("D8  2^|3 (base side) DEL -> 2^box","2 POW 3 LEFT LEFT DEL",{line:"2|",tree:"pow{[N2]^[]}"});
 t("D9  template right edge DEL","FRAC 1 2 DOWN 3 4 RIGHT DEL",{line:"(12)/(3|)",tree:"frac{[N12]/[N3]}"});
 t("D10 integral lower-slot start DEL","INTG XKEY DOWN DEL",{tree:"intg{lo[],up[],body[]}"});
 t("D11 integral integrand start DEL","INTG XKEY DEL DEL",{line:"|",tree:""});
@@ -143,13 +142,14 @@ t("D13 2^3^4 deepest end DEL -> 2^(3^(box))","2 POW 3 POW 4 DEL",
   {line:"23|",tree:"pow{[N2]^[pow{[N3]^[]}]}"});
 t("D14 2^3^4^5 outside DEL -> 2^(3^(4^(box)))","2 POW 3 POW 4 POW 5 RIGHT DEL",
   {line:"234|",tree:"pow{[N2]^[pow{[N3]^[pow{[N4]^[]}]}]}"});
-t("D15 |2^3^4 DEL is a no-op at the start","2 POW 3 POW 4 LEFT LEFT LEFT DEL",
+t("D15 |2^3^4 DEL is a no-op at the start","2 POW 3 POW 4 LEFT LEFT LEFT LEFT LEFT DEL",
   {line:"|234",tree:"pow{[N2]^[pow{[N3]^[N4]}]}"});
-/* D16/D17: the base-start state inside an exponent collapses ONE nesting level
-   (it shares its screen spot with the enclosing exponent's start). */
-t("D16 2|3^4 DEL collapses one level","2 POW 3 POW 4 LEFT LEFT DEL",
-  {line:"2|34",tree:"N2,pow{[N3]^[N4]}"});
-t("D17 2|3^4 via the exponent start collapses too","2 POW 3 POW 4 LEFT DEL",
+/* D16: DEL on the base side of an inner boundary stays inside the exponent -
+   it erases the exponent's last digit (same rule as D8), never the base. */
+t("D16 2^3|4 (base side) DEL erases the exponent","2 POW 3 POW 4 LEFT LEFT DEL",
+  {line:"23|",tree:"pow{[N2]^[pow{[N3]^[]}]}"});
+/* D17: DEL on the exponent side of an inner boundary collapses that level. */
+t("D17 2^3^|4 (exp side) DEL collapses one level","2 POW 3 POW 4 LEFT DEL",
   {line:"23|4",tree:"pow{[N2]^[N3,N4]}"});
 
 console.log("\n--- N. navigation (doc 3.3) ---");
@@ -161,12 +161,11 @@ t("N5a after answer LEFT lands at end","2 POW 3 EQUALS LEFT",{line:"23|",tree:"p
 t("N5b after answer RIGHT lands at start","2 POW 3 EQUALS RIGHT",{line:"|23",tree:"pow{[N2]^[N3]}"});
 t("N5c after answer DEL edits the end","2 POW 3 EQUALS DEL",{line:"2|",tree:"pow{[N2]^[]}"});
 
-/* N1: after Phase 4 (boundary unification) the tower has at most TWO states per
-   screen position - the standard enter/exit press at a structural boundary - and
-   LEFT/RIGHT walk the same positions in opposite order. LEFT is still exactly one
-   press longer than RIGHT: at the very start of the expression, base@0 (type into
-   the base) and root@0 (insert before the power) render at the same spot and both
-   must stay reachable, so they are the one remaining pair of states. */
+/* N1: each power boundary keeps exactly TWO stops - the base side (base@end,
+   "2|3") and the exponent side (exp@0, "2|3") - so LEFT/RIGHT never stop three
+   times at one screen position (N7) while the "step into the base" press is
+   preserved. The two directions are exact mirrors and therefore have EQUAL cycle
+   lengths (Phase 4 acceptance). */
 console.log("\n--- N1: LEFT/RIGHT cycles (Phase 4) ---");
 {
   const cycle=(keys,dir)=>{
@@ -180,13 +179,13 @@ console.log("\n--- N1: LEFT/RIGHT cycles (Phase 4) ---");
     }
     return n+1;
   };
-  const cases=[["2 POW 3",5,4],["2 POW 3 POW 4",6,5],["2 POW 3 POW 4 POW 5",7,6]];
+  const cases=[["2 POW 3",6,6],["2 POW 3 POW 4",8,8],["2 POW 3 POW 4 POW 5",10,10]];
   for(const [keys,wl,wr] of cases){
     const gl=cycle(keys,"LEFT"), gr=cycle(keys,"RIGHT");
-    const ok=gl===wl&&gr===wr&&gl===gr+1;
+    const ok=gl===wl&&gr===wr&&gl===gr;
     ok?pass++:fail++;
     console.log((ok?"ok   ":"FAIL ")+("N1 "+keys).padEnd(40)+" LEFT="+gl+" RIGHT="+gr+
-      (ok?"":("   want LEFT="+wl+" RIGHT="+wr+" and LEFT=RIGHT+1")));
+      (ok?"":("   want LEFT="+wl+" RIGHT="+wr+" and LEFT=RIGHT")));
   }
 }
 /* N7: the direct counterpart of the user-visible complaint - walking LEFT through

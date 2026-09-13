@@ -924,19 +924,14 @@ function layoutPower(baseHTML,expHTML){
 }
 function renderPow(n,ctx){
   var c=baseCtx(ctx);
-  /* Phase 4 / R3: the shared base/exponent boundary is now represented by the
-     exponent frame at offset 0. Draw its caret BETWEEN base and exponent at the
-     base's height (the old base@end / renderNodeAt at===bd picture) instead of
-     raising it into the exponent span, so "2|4" keeps its familiar look. The
-     exponent is rendered with the caret suppressed for that one branch. */
-  var cu=cur();
-  var boundary=!hideCaret && cu.node===n && cu.slot==="exp" && cu.pos<=0
-               && arrDigits(n.base)>0 && n.exp.length>0;
+  /* The two stops of a base/exponent boundary render DIFFERENTLY on purpose, so
+     the user can tell which slot the caret is in even though the x position is
+     the same: the base side (a base frame at base@end) draws the caret after
+     the base at the base's height, the exponent side (an exp frame at offset 0)
+     draws it inside the raised exponent span. Editing follows the frame, so the
+     distinction is what makes "type here" unambiguous. */
   var base=slotOrBox(n.base,null,null,{powerDepth:c.powerDepth,fontMode:"NORMAL",layoutMode:c.layoutMode});
-  var exp;
-  if(boundary){ var saved=hideCaret; hideCaret=true; exp=renderExponent(n.exp,c); hideCaret=saved; }
-  else exp=renderExponent(n.exp,c);
-  if(boundary) return '<span class="math">'+base+caretHTML()+exp+'</span>';
+  var exp =renderExponent(n.exp,c);
   return layoutPower(base,exp);
 }
 function renderNode(n,ctx){
@@ -1113,10 +1108,10 @@ function digitsIn(n){
   if(tn==="logbase") return 4+(n.base?arrDigits(n.base):0)+(n.arg?arrDigits(n.arg):0)+2;
   /* A power needs its own caret positions or the caret lands ON the node
      instead of after it: the base digits, the "^", then the exponent. The "^"
-     is dropped when the exponent begins with a power, because that leading edge
-     is then the same place as the inner power's first position (see
-     powExpStartsWithPower). */
-  if(tn==="pow") return slotDigits(n.base)+(powExpStartsWithPower(n)?0:1)+slotDigits(n.exp);
+     offset is the BASE side of the shared boundary and the exponent's offset 0
+     is the exponent side, which is what gives every power boundary exactly two
+     stops (see the Phase 4 helpers in the NAVIGATOR section). */
+  if(tn==="pow") return slotDigits(n.base)+1+slotDigits(n.exp);
   if(tn==="sqrt") return 1+(n.body?arrDigits(n.body):0);
   if(tn==="root") return 1+(n.n?arrDigits(n.n):0)+1+(n.body?arrDigits(n.body):0);
   /* The integral's slots are laid out in NAVIGATION order so that a single
@@ -1138,13 +1133,9 @@ function arrDigits(a){ var t=0; for(var k=0;k<a.length;k++) t+=digitsIn(a[k]); r
 /* A template slot always contributes at least one digit-width so that an empty
    numerator/denominator still has a cursor position and can be navigated into. */
 function slotDigits(a){ return Math.max(1, arrDigits(a)); }
-/* Does this power's exponent BEGIN with another power?
- *
- * When it does, the "^" and the inner power's own leading edge are the same
- * place on screen, so counting a separate offset for the "^" would give one
- * spot two caret positions and make every nesting boundary cost an extra key
- * press. The inner power's width already covers that spot, so it is not added
- * on top. */
+/* Does this power's exponent BEGIN with another power? Used by the NAVIGATOR to
+   fold the inner power's leading base@0 into the enclosing exponent's start (the
+   third state at one screen position). */
 function powExpStartsWithPower(n){
   var e=n && n.exp;
   return !!(e && e.length && e[0] && e[0].t==="pow");
@@ -1550,16 +1541,13 @@ function descendAtCursor(){
         break;
       }
       case "pow":{
-        /* Offsets of a power: [base block][^][exponent block].
-           - normally the base block is 0..bd inclusive (bd is the "^" itself)
-           - when the exponent BEGINS with a power there is no "^" offset, so
-             the base block is only 0..bd-1 and the boundary already belongs to
-             the exponent. Sending the boundary to the base here was what made
-             the caret stop twice at one place. */
+        /* Offsets of a power: [base block][^][exponent block]. The "^" offset
+           (bd) is the BASE side of the shared boundary; bd+1 is the exponent
+           side. Keeping the offset means one screen position maps to one slot,
+           so RIGHT walks base -> exponent and LEFT walks exponent -> base. */
         var bd=slotDigits(n.base);
-        var hasCaret=!powExpStartsWithPower(n);
-        if(hasCaret ? (off<=bd) : (off<bd)){ slot="base"; rel=Math.min(off,arrDigits(n.base)); }
-        else { slot="exp"; rel=off-(hasCaret?bd+1:bd); }
+        if(off<=bd){ slot="base"; rel=Math.min(off,arrDigits(n.base)); }
+        else { slot="exp"; rel=off-bd-1; }
         break;
       }
       case "sqrt":{
@@ -1622,29 +1610,19 @@ function descendAtCursor(){
    the v3 plan is what unifies them. Until then those cases are load-bearing and
    stay as they are. moveField() is the shared UP/DOWN body. */
 /* ---- Phase 4: boundary unification helpers (doc 5.6 / 10.3) ----------------
-   One screen position is shared by several (frame, offset) states. Navigation
-   normalises to one representative per direction so the caret never stops two
-   or three times at the same place:
-     - from the right (LEFT): LEFT enters a power's base at its last DIGIT (not
-       at base@end); base@0 of a power that leads an enclosing exponent merges
-       into that exponent's start; a trailing exponent end becomes the deepest.
-     - from the left (RIGHT): base@end becomes the exponent start; leaving a
-       nested exponent end climbs straight out past the intermediate ends, which
-       render at the same spot anyway.
-   Base@0 of a top-level power stays reachable: it is the only way to type into
-   an empty/leading base, so it remains the one standard extra press at the very
-   start. */
-function canonBaseEndToExpStart(){
-  var c=cur();
-  /* only when the exponent actually holds something: with an EMPTY exponent the
-     base's right edge is the only way to keep typing the base, and the empty box
-     stays a separate placeholder state (see emptyExpRect). */
-  if(c.node && c.node.t==="pow" && c.slot==="base" && c.pos>0 && c.pos>=arrDigits(c.node.base)
-     && arrDigits(c.node.exp)>0){
-    stack.pop();
-    stack.push({arr:c.node.exp,pos:0,node:c.node,slot:"exp"});
-  }
-}
+   A power boundary (between base and exponent) keeps TWO stops, which is the
+   "one extra press to step into the base" every calculator user expects:
+       base@end   the base side  ("2|3")   - also where UP lands
+       exp@0      the exponent side ("2|3")
+   What is removed is only the THIRD state: when the exponent BEGINS with another
+   power, that inner power's base@0 renders at the enclosing exponent's start, so
+   it is folded into the enclosing exp@0 (canonLeadingBaseIntoExp). Without this
+   folding a tower showed "2|34" three times in a row.
+   Two more normalisations keep the tower ends sane:
+     - a trailing exponent end becomes the DEEPEST one (LEFT, arriving from the
+       right), so the invisible intermediate ends are not separate stops;
+     - leaving a nested exponent end climbs straight out of the power (RIGHT), so
+       exit is a single press.                                          */
 function canonLeadingBaseIntoExp(){
   var c=cur();
   if(!(c.node && c.node.t==="pow" && c.slot==="base" && c.pos<=0)) return;
@@ -1676,8 +1654,8 @@ function climbOutOfNestedEnds(){
     leaveField(1);
   }
 }
-function canonAfterLeft(){ canonBaseEndToExpStart(); canonLeadingBaseIntoExp(); canonDeepestExpEnd(); }
-function canonAfterRight(){ canonBaseEndToExpStart(); }
+function canonAfterLeft(){ canonLeadingBaseIntoExp(); canonDeepestExpEnd(); }
+function canonAfterRight(){ /* base@end stays a stop: RIGHT walks base -> exponent */ }
 function moveLeft(){ moveLeftRaw(); canonAfterLeft(); }
 function moveRight(){ moveRightRaw(); canonAfterRight(); }
 function moveLeftRaw(){
@@ -1749,12 +1727,13 @@ function moveLeftRaw(){
            back into the very box it had just left). Other templates keep the
            region walk, which is what makes the fraction numerator/denominator
            behave. */
-        if(f.node.t==="pow" && f.slot==="exp"){
-          /* enter the base at its LAST DIGIT, not at base@end, so LEFT does not
-             bounce back through the shared boundary (Phase 4) */
+        if(f.node.t==="pow" && f.slot==="exp" && keys[ki-1]==="base"){
+          /* enter the base at the base side of the boundary (base@end); that
+             stop is the "step into the base" press the user expects, and a
+             leading inner base@0 is folded into the enclosing exponent by
+             canonLeadingBaseIntoExp() */
           stack.pop();
-          var bd=arrDigits(f.node.base);
-          stack.push({arr:f.node.base,pos:bd>0?bd-1:0,node:f.node,slot:"base"});
+          enterEnd(f.node,"base");
           return;
         }
         if(f.node.t==="pow" && f.slot==="base"){ leaveField(-1); return; }
@@ -1793,6 +1772,17 @@ function moveRightRaw(){
   if(stack.length<=1 && total>0 && c.pos>=total){
     stack[0].pos=0;
     return;
+  }
+  /* Phase 4: at the very left of the expression RIGHT first steps INTO the
+     first power's base at offset 0 - the same screen spot, i.e. the standard
+     "enter the template" press. Without it RIGHT jumped straight to base@end,
+     so LEFT/RIGHT were not reversible at the start. */
+  if(stack.length<=1 && c.pos<=0){
+    var first=c.arr[0];
+    if(first && first.t==="pow" && arrDigits(first.base)>0){
+      stack.push({arr:first.base,pos:0,node:first,slot:"base"});
+      return;
+    }
   }
   if(c.pos<total){
     c.pos++;
