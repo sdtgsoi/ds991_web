@@ -1299,21 +1299,28 @@ function isFactor(n){
   return n && ["num","variable","const","func","frac","mixed","pow","sqrt","root","paren","abs","post","logbase","intg","deriv","sum","prod"].indexOf(n.t)>=0;
 }
 /* ============================ POWER KEYS ============================ */
-/* Specification (docs: "指数功能错误分析与修改计划" v1.0).
+/* PowerContext is the SINGLE arbiter of "where is the caret relative to a
+ * power" (docs: temp-docs/DS991_km_指数编辑系统错误分析与重构开发方案_v3.md,
+ * chapters 5.2/5.3). Input (insertPower), navigation, deletion and rendering
+ * must all ask this one function rather than re-deriving the rule: the five
+ * independent interpretations were the root cause of the boundary bugs.
  *
- * One context resolver plus one operation handler, so x^(), x^2 and x^3 can
- * never disagree about the same caret position.
+ * The five contexts:
  *
  *   OUTSIDE_POWER      the caret sits right after a finished power and is NOT
  *                      inside any exponent slot  -> every power key is ignored
  *   EXP_END            caret at the end of an exponent slot
- *                      x^2/x^3 append to the right end of that exponent;
+ *                      x^2/x^3 wrap the whole exponent as a new base;
  *                      x^() appends an empty exponent and enters it
  *   BASE_EXP_BOUNDARY  caret in the base of a power that already has an
  *                      exponent, i.e. between base and exponent
  *                      x^2/x^3 are ignored; x^() inserts a power in front of
  *                      the exponent  ->  2|^4  + x^()  ->  2^(□^4)
- *   NUMBER_MIDDLE      caret inside a number
+ *   NUMBER_MIDDLE      caret inside a number - inside an exponent OR at the top
+ *                      level. It used to be recognised only inside an exponent,
+ *                      so a top-level "123|456 + x^()" fell through to NORMAL
+ *                      where inputPow() could find no left operand and inserted
+ *                      an empty-base power before the number (defect P1);
  *                      x^2/x^3 raise the LEFT part and keep the right part;
  *                      x^() makes the LEFT part the base and the RIGHT part the
  *                      exponent, with the caret entering that exponent
@@ -1350,10 +1357,20 @@ function atBaseExpBoundary(){
   }
   return false;
 }
+/* the number token the caret sits STRICTLY inside (null on a token boundary) */
+function numTokenAtCursor(){
+  var c=cur(), n=tokenAt(c.arr,c.pos);
+  return (n && n.t==="num") ? n : null;
+}
 function getPowerContext(){
   if(!inExponent()){
     if(atBaseExpBoundary()) return {type:"BASE_EXP_BOUNDARY"};
     if(stack.length<=1 && afterPower()) return {type:"OUTSIDE_POWER"};
+    /* P1 fix: a top-level caret inside a number is NUMBER_MIDDLE exactly like
+       one inside an exponent. Falling through to NORMAL here made inputPow()
+       miss the left operand and insert an empty-base power in front of the
+       number ("123|456" + x^() used to become "□^□123456"). */
+    if(numTokenAtCursor()) return {type:"NUMBER_MIDDLE", frame:cur()};
     return {type:"NORMAL"};
   }
   var f=stack[expFrames()];
@@ -1428,9 +1445,12 @@ function opNumberMiddle(ctx, kind){
   f.pos=tokenStart(f.arr,i)+digitsIn(pw2);
   return true;
 }
-/* kind is 2 for x^2, 3 for x^3 and null for x^(). Returns true when the key
-   was consumed by one of the power positions above. */
-function handlePowerOperation(kind){
+/* PowerController entry point: ONE decision table for x^2, x^3 and x^().
+   `kind` is 2 for x^2, 3 for x^3 and null for x^(). Returns true when the key
+   was consumed by one of the power positions above; false means "NORMAL, fall
+   back to ordinary insertion". Every power key goes through here so the three
+   keys can never disagree about the same caret position. */
+function insertPower(kind){
   var ctx=getPowerContext();
   switch(ctx.type){
     case "OUTSIDE_POWER":     return true;          /* ignored on purpose */
@@ -2148,7 +2168,7 @@ function inputSqrt(){ startFreshIfResult(); var f=T_sqrt(); ins(f); enter(f,"bod
 function inputCbrt(){ startFreshIfResult(); var f=T_root(); f.n.push(T_num("3")); ins(f); enter(f,"body"); }
 function inputNthRoot(){ startFreshIfResult(); var f=T_root(); ins(f); enter(f,"n"); }
 function inputPow(){
-  if(handlePowerOperation(null)) return;
+  if(insertPower(null)) return;
   startFreshIfResult();
   var base=takeOperand();
   var f=T_pow(base?[base]:[],[]);
@@ -2157,27 +2177,17 @@ function inputPow(){
 function inputSquare(){ raisePower(2); }
 function inputCube(){ raisePower(3); }
 /* x^2 / x^3 in NORMAL position: the value left of the caret becomes the base of
-   a new power. A number the caret sits inside is split first, so only its left
-   part is raised ("12" with the caret after the 1 -> (1^2)2). Every exponent
-   position has already been handled by handlePowerOperation(). */
+   a new power. A caret inside a number is NUMBER_MIDDLE and already consumed by
+   insertPower() -> opNumberMiddle(), which cuts the number so only its left part
+   is raised ("12" with the caret after the 1 -> (1^2)2). That rule used to be
+   duplicated here as well as in getPowerContext - exactly the drift the
+   PowerContext refactor removes. */
 function raisePower(k){
-  if(handlePowerOperation(k)) return;
+  if(insertPower(k)) return;
   startFreshIfResult();
-  var c=cur(), m=String(k);
-  /* a number the caret sits inside is cut first, so only its left part is
-     raised: "12" with the caret after the 1 -> (1^2)2 */
-  var n=tokenAt(c.arr,c.pos);
-  if(n && n.t==="num"){
-    var at=offsetInToken(c.arr,c.pos), str=String(n.v), i=c.arr.indexOf(n);
-    if(at>0 && at<str.length){
-      var pw=T_pow([node("num",{v:str.slice(0,at)})],[T_num(m)]);
-      c.arr.splice(i,1,pw,node("num",{v:str.slice(at)}));
-      c.pos=tokenStart(c.arr,i)+digitsIn(pw);
-      return;
-    }
-  }
+  var c=cur();
   var b=takeLeftOf(c.arr,c.pos);
-  ins(T_pow(b?[b]:[],[T_num(m)]));
+  ins(T_pow(b?[b]:[],[T_num(String(k))]));
 }
 function inputRecip(){ startFreshIfResult(); var b=takeOperand(); var f=T_frac(); f.num.push(T_num("1")); if(b) f.den.push(b); ins(f); if(!b) enter(f,"den"); }
 function inputExp10(){ startFreshIfResult(); var f=T_pow([T_num("10")],[]); ins(f); enter(f,"exp"); }
