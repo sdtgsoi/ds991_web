@@ -12,14 +12,14 @@
  *   N*  navigation (N1..N6)      V*  eval / serialization
  *   R*  render assets (source-level guard only - real R1..R4 need screenshots)
  *
- * One known defect is carried as `xfail`: the assertion states the CORRECT
- * behaviour and the run reports "xfail" while the code is still wrong. When the
- * defect is fixed the same case reports XPASS, which is a FAILURE on purpose:
- * it tells us to delete the xfail marker and keep the case as a real test.
- *   N6  UP/DOWN inside a power tower ->  DOWN must not skip inner levels (Phase 3)
- *
- * Defect P1 (top-level mid-number + x^()) was fixed in Phase 2, so its cases
- * (I10a/I10b) are now ordinary assertions.
+ * Defects found during Phase 0 are fixed and their cases are ordinary
+ * assertions now:
+ *   P1  top-level mid-number + x^()               -> fixed in Phase 2 (I10a/I10b)
+ *   N6  UP/DOWN not reversible in a power tower   -> fixed in Phase 3 (N6a-N6c)
+ * The `xfail` machinery is kept for the next defect: a case marked xfail
+ * asserts the CORRECT behaviour, reports "xfail" while the code is still wrong,
+ * and reports XPASS (counted as a failure) once it is fixed - the signal to
+ * drop the marker.
  *
  * Usage: node tools/power_test.js
  */
@@ -169,13 +169,15 @@ console.log("\n--- N1 baseline: LEFT/RIGHT cycles (doc 3.3 / Phase 4 flips this)
   }
 }
 
-console.log("\n--- N6 (new) - expected-fail until Phase 3 ---");
-/* UP must be reversible: DOWN from a state UP just reached must return there.
-   Today DOWN from the outer exponent start leaves the whole tower. */
+console.log("\n--- N6: UP/DOWN are reversible in a power tower (fixed in Phase 3) ---");
+/* DOWN from the start of an exponent must advance into the nested power exactly
+   like RIGHT, instead of leaving the whole tower and skipping the inner slots. */
 t("N6a UP then DOWN is reversible","2 POW 3 POW 4 UP UP DOWN",
-  {path:'["root","exp","base"]'},{xfail:"N6"});
+  {path:'["root","exp","base"]'});
 t("N6b UP UP then DOWN DOWN returns","2 POW 3 POW 4 UP UP DOWN DOWN",
-  {path:'["root","exp","exp"]'},{xfail:"N6"});
+  {path:'["root","exp","exp"]'});
+t("N6c UP reaches the outer base, DOWN comes back","2 POW 3 POW 4 UP UP UP DOWN",
+  {path:'["root","exp"]',line:"2|34"});
 
 console.log("\n--- V. evaluation / serialization (doc 3.5) ---");
 {

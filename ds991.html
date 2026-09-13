@@ -2037,6 +2037,17 @@ function doField(dir){
   var c=cur(), keys=slotKeys(c.node);
   var i=keys?keys.indexOf(c.slot):-1;
   if(i>=0){
+    /* N6 (doc 10.1): inside a power's EXPONENT, DOWN first advances within the
+       exponent exactly like RIGHT (advance + descend). Without this, DOWN from
+       the start of an exponent that holds a nested power left the whole tower
+       and skipped the inner base/exponent, so UP and DOWN were not reversible.
+       The guard `c.pos<total` keeps "2^3 DOWN" stepping out as before: there
+       the exponent has nothing left to the right. */
+    if(dir>0 && c.node && c.node.t==="pow" && c.slot==="exp" && c.pos<arrDigits(c.arr)){
+      c.pos++;
+      descendAtCursor();
+      return true;
+    }
     var j=i+dir;
     if(j<0 || j>=keys.length){
       if(stack.length>1){ leaveField(dir); return true; }
