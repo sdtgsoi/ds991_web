@@ -924,8 +924,19 @@ function layoutPower(baseHTML,expHTML){
 }
 function renderPow(n,ctx){
   var c=baseCtx(ctx);
+  /* Phase 4 / R3: the shared base/exponent boundary is now represented by the
+     exponent frame at offset 0. Draw its caret BETWEEN base and exponent at the
+     base's height (the old base@end / renderNodeAt at===bd picture) instead of
+     raising it into the exponent span, so "2|4" keeps its familiar look. The
+     exponent is rendered with the caret suppressed for that one branch. */
+  var cu=cur();
+  var boundary=!hideCaret && cu.node===n && cu.slot==="exp" && cu.pos<=0
+               && arrDigits(n.base)>0 && n.exp.length>0;
   var base=slotOrBox(n.base,null,null,{powerDepth:c.powerDepth,fontMode:"NORMAL",layoutMode:c.layoutMode});
-  var exp =renderExponent(n.exp,c);
+  var exp;
+  if(boundary){ var saved=hideCaret; hideCaret=true; exp=renderExponent(n.exp,c); hideCaret=saved; }
+  else exp=renderExponent(n.exp,c);
+  if(boundary) return '<span class="math">'+base+caretHTML()+exp+'</span>';
   return layoutPower(base,exp);
 }
 function renderNode(n,ctx){
@@ -1348,12 +1359,14 @@ function afterPower(){
   if(!n||n.t!=="pow") return false;
   return c.pos>=tokenStart(c.arr,i-1)+arrDigits(n);
 }
-/* the caret is inside a power's BASE, which already has an exponent */
+/* the caret is at a power's BASE right edge (its exponent is non-empty). After
+   Phase 4 the boundary's canonical state is the exponent at offset 0; this base
+   frame form is still produced by UP/DOWN, so both are recognised. */
 function atBaseExpBoundary(){
   for(var d=stack.length-1;d>0;d--){
     var f=stack[d];
     if(f.node && f.node.t==="pow" && f.slot==="base"){
-      return f.node.exp.length>0;
+      return f.node.exp.length>0 && f.pos>=arrDigits(f.node.base);
     }
   }
   return false;
@@ -1376,7 +1389,15 @@ function getPowerContext(){
   }
   var f=stack[expFrames()];
   var total=arrDigits(f.node.exp);
-  if(f.pos<=0 || f.pos>=total) return {type:"EXP_END", frame:f};
+  /* Phase 4: base@end and exp@0 are one shared boundary and the canonical
+     representative is exp@0. A non-empty base plus a non-empty exponent at
+     offset 0 is therefore the BASE_EXP_BOUNDARY spot (x^2/x^3 ignored, x^()
+     nests), NOT the exponent end - which is what opExpEnd used to treat it as. */
+  if(f.pos<=0){
+    if(arrDigits(f.node.base)>0 && total>0) return {type:"BASE_EXP_BOUNDARY", frame:f};
+    return {type:"EXP_END", frame:f};
+  }
+  if(f.pos>=total) return {type:"EXP_END", frame:f};
   return {type:"NUMBER_MIDDLE", frame:f};
 }
 /* put the caret in `pw`'s base and return true */
@@ -1414,17 +1435,23 @@ function opExpEnd(ctx, kind){
   f.pos=tokenStart(f.arr,0)+digitsIn(pw);  /* stay in this exponent, after it */
   return true;
 }
-function opBaseExpBoundary(kind){
+/* x^() at the shared base/exponent boundary: insert a fresh empty-base power in
+   front of the exponent and move the caret into its base, so 2|^4 becomes
+   2^(□^4). The boundary's canonical state is the exponent at offset 0
+   (Phase 4); a base@end frame (an UP/DOWN arrival) is accepted too. */
+function opBaseExpBoundary(ctx, kind){
   if(kind!==null) return true;                 /* x^2 / x^3 are ignored here */
-  for(var d=stack.length-1;d>0;d--){
-    var f=stack[d];
-    if(f.node && f.node.t==="pow" && f.slot==="base"){
-      var pw=T_pow([], f.node.exp.slice());    /* []^4 : keeps the old exponent */
-      f.node.exp=[pw];
-      return enterBase(pw);                    /* caret goes into the square */
+  var f=(ctx && ctx.frame && ctx.frame.node && ctx.frame.node.t==="pow") ? ctx.frame : null;
+  if(!f){
+    for(var d=stack.length-1;d>0;d--){
+      if(stack[d].node && stack[d].node.t==="pow" && stack[d].slot==="base"){ f=stack[d]; break; }
     }
   }
-  return false;
+  if(!f) return false;
+  var pw=T_pow([], f.node.exp.slice());    /* []^4 : keeps the old exponent */
+  f.node.exp=[pw];
+  if(f.slot==="exp") f.arr=f.node.exp;     /* keep the frame's array in sync */
+  return enterBase(pw);                    /* caret goes into the square */
 }
 function opNumberMiddle(ctx, kind){
   var f=ctx.frame, n=tokenAt(f.arr,f.pos);
@@ -1456,7 +1483,7 @@ function insertPower(kind){
   switch(ctx.type){
     case "OUTSIDE_POWER":     return true;          /* ignored on purpose */
     case "EXP_END":           return opExpEnd(ctx, kind);
-    case "BASE_EXP_BOUNDARY": return opBaseExpBoundary(kind);
+    case "BASE_EXP_BOUNDARY": return opBaseExpBoundary(ctx, kind);
     case "NUMBER_MIDDLE":     return opNumberMiddle(ctx, kind);
     default:                  return false;         /* NORMAL */
   }
@@ -1594,7 +1621,66 @@ function descendAtCursor(){
    exponent start are three coordinates of one screen position, and Phase 4 of
    the v3 plan is what unifies them. Until then those cases are load-bearing and
    stay as they are. moveField() is the shared UP/DOWN body. */
-function moveLeft(){
+/* ---- Phase 4: boundary unification helpers (doc 5.6 / 10.3) ----------------
+   One screen position is shared by several (frame, offset) states. Navigation
+   normalises to one representative per direction so the caret never stops two
+   or three times at the same place:
+     - from the right (LEFT): LEFT enters a power's base at its last DIGIT (not
+       at base@end); base@0 of a power that leads an enclosing exponent merges
+       into that exponent's start; a trailing exponent end becomes the deepest.
+     - from the left (RIGHT): base@end becomes the exponent start; leaving a
+       nested exponent end climbs straight out past the intermediate ends, which
+       render at the same spot anyway.
+   Base@0 of a top-level power stays reachable: it is the only way to type into
+   an empty/leading base, so it remains the one standard extra press at the very
+   start. */
+function canonBaseEndToExpStart(){
+  var c=cur();
+  /* only when the exponent actually holds something: with an EMPTY exponent the
+     base's right edge is the only way to keep typing the base, and the empty box
+     stays a separate placeholder state (see emptyExpRect). */
+  if(c.node && c.node.t==="pow" && c.slot==="base" && c.pos>0 && c.pos>=arrDigits(c.node.base)
+     && arrDigits(c.node.exp)>0){
+    stack.pop();
+    stack.push({arr:c.node.exp,pos:0,node:c.node,slot:"exp"});
+  }
+}
+function canonLeadingBaseIntoExp(){
+  var c=cur();
+  if(!(c.node && c.node.t==="pow" && c.slot==="base" && c.pos<=0)) return;
+  if(stack.length<2) return;
+  var f=stack[stack.length-2];
+  if(f.slot==="exp" && f.arr.length && f.arr[0]===c.node){
+    stack.pop();
+    cur().pos=0;
+  }
+}
+function canonDeepestExpEnd(){
+  var guard=0;
+  while(guard++<32){
+    var c=cur();
+    if(!(c.node && c.node.t==="pow" && c.slot==="exp" && c.pos>=arrDigits(c.arr))) return;
+    var last=c.arr[c.arr.length-1];
+    if(!last || last.t!=="pow") return;
+    enterEnd(last,"exp");
+  }
+}
+function climbOutOfNestedEnds(){
+  var guard=0;
+  while(guard++<32){
+    var c=cur();
+    if(!(c.node && c.node.t==="pow" && c.slot==="exp" && c.pos>=arrDigits(c.arr))) return;
+    if(stack.length<2) return;
+    var p=stack[stack.length-2];
+    if(p.arr[p.arr.length-1]!==c.node) return;
+    leaveField(1);
+  }
+}
+function canonAfterLeft(){ canonBaseEndToExpStart(); canonLeadingBaseIntoExp(); canonDeepestExpEnd(); }
+function canonAfterRight(){ canonBaseEndToExpStart(); }
+function moveLeft(){ moveLeftRaw(); canonAfterLeft(); }
+function moveRight(){ moveRightRaw(); canonAfterRight(); }
+function moveLeftRaw(){
   var c=cur();
   if(afterAnswer){
     /* first LEFT after an answer: land on the far right */
@@ -1663,6 +1749,14 @@ function moveLeft(){
            back into the very box it had just left). Other templates keep the
            region walk, which is what makes the fraction numerator/denominator
            behave. */
+        if(f.node.t==="pow" && f.slot==="exp"){
+          /* enter the base at its LAST DIGIT, not at base@end, so LEFT does not
+             bounce back through the shared boundary (Phase 4) */
+          stack.pop();
+          var bd=arrDigits(f.node.base);
+          stack.push({arr:f.node.base,pos:bd>0?bd-1:0,node:f.node,slot:"base"});
+          return;
+        }
         if(f.node.t==="pow" && f.slot==="base"){ leaveField(-1); return; }
         stack.pop(); enterEnd(f.node,keys[ki-1]); return;  /* previous slot */
       }
@@ -1670,7 +1764,7 @@ function moveLeft(){
     leaveField(-1);
   }
 }
-function moveRight(){
+function moveRightRaw(){
   var c=cur();
   var total=arrDigits(c.arr);
   /* an EMPTY exponent box is crossed, not stopped in (see emptyExpRect); the
@@ -1713,6 +1807,7 @@ function moveRight(){
       if(ki>=0 && ki<keys.length-1){ stack.pop(); enter(f.node,keys[ki+1]); return; }
     }
     leaveField(1);
+    climbOutOfNestedEnds();   /* Phase 4: skip the invisible intermediate ends */
   }
 }
 /* DEL removes the single digit immediately left of the caret, which is also
@@ -1937,6 +2032,8 @@ function doDel(){
   var c=cur();
   var pt=powerDeleteTarget(c);
   if(pt){ deletePower(c,pt); return; }
+  var bs=powerBaseStart(c);
+  if(bs){ if(bs.merge) mergeExponentIntoBase(bs.merge); return; }
   var it=integralDeleteTarget(c);
   if(it){ deleteIntegral(it); return; }
   if(c.pos>0){
@@ -1947,6 +2044,27 @@ function doDel(){
   if(stack.length<=1) return;
   if(deleteIntoPrevSlot()) return;
   deleteEnclosingNode();
+}
+/* DEL at the very START of a power's base (offset 0). The same screen spot is
+ * reachable as "inside an exponent, at its left edge" when the power is the
+ * leading content of an enclosing exponent, and the two used to disagree: the
+ * base frame ate the outer base's last digit while the exponent frame collapsed
+ * a level. Both now collapse one level, which is what "drop this nesting" means
+ * visually:
+ *      2|3^4   DEL  ->  2 3^4      (i.e. 23^4)
+ * and at the very start of the whole expression DEL is a no-op instead of
+ * throwing the power away:
+ *      |2^3^4  DEL  ->  |2^3^4
+ * Returns {merge:<outer pow>} to collapse, {} to do nothing, or null to let the
+ * ordinary delete path run. */
+function powerBaseStart(c){
+  if(!(c.node && c.node.t==="pow" && c.slot==="base" && c.pos<=0)) return null;
+  for(var d=stack.length-1;d>0;d--){
+    var f=stack[d];
+    if(f.slot==="exp" && f.arr.length && f.arr[0]===c.node) return {merge:f.node};
+  }
+  if(stack.length===2 && stack[0].arr.indexOf(c.node)===0) return {};
+  return null;
 }
 /* The power whose delete rules apply at the caret, or null. `inExp` records
    whether the caret is in that power's exponent slot. Two ways in: the caret is
@@ -1972,10 +2090,46 @@ function powerDeleteTarget(c){
      * elsewhere inside the exponent: erase one digit of the exponent;
      * at the base's right edge: act on the exponent box (remove it when empty,
        otherwise erase its last digit). */
+/* DEL at the visual END of a nested structure must remove ONE digit of the
+ * DEEPEST trailing token, not the whole inner subtree: at the end of "2^3^4"
+ * the last token of the outer exponent is the power "3^4", and deleting that
+ * token dropped a whole level (2^3^4| -> 2^□ instead of 2^(3^(□))).
+ * This walks down the trailing last-slot chain and returns the innermost frame
+ * that still holds something to delete, or null when there is nothing to
+ * descend into (the top frame's last token is then a plain token).
+ *
+ * Integrals are skipped: their last NAVIGATION slot (upper) is not the printed
+ * last element, so their trailing edge keeps its own rule. */
+function enterDeepestTrailing(arr){
+  var guard=0, deepest=null;
+  while(guard++<64){
+    if(!arr || !arr.length) break;
+    var lastTok=arr[arr.length-1];
+    if(!lastTok || lastTok.t==="intg" || !slotKeys(lastTok)) break;
+    var ls=lastSlot(lastTok), sub=ls?lastTok[ls]:null;
+    if(!sub || !sub.length) break;   /* empty trailing slot: caller handles it */
+    enterEnd(lastTok,ls);
+    deepest=cur();
+    arr=sub;
+  }
+  return deepest;
+}
+/* remove one digit at the visual end of `frame`, descending through trailing
+   templates first. Returns true when something was removed. */
+function deleteAtTrailingEnd(frame){
+  var f=enterDeepestTrailing(frame.arr)||frame;
+  var np=delDigitIn(f.arr,f.pos);
+  if(np<0) return false;
+  f.pos=np;
+  return true;
+}
 function deletePower(c,tgt){
   var powCtx=tgt.node, powInExp=tgt.inExp;
   if(powInExp && c.pos<=0){ mergeExponentIntoBase(powCtx); return; }
   if(powInExp){
+    /* at the END of a nested exponent, delete one digit of the deepest trailing
+       template rather than the whole inner power (2^3^4| -> 2^(3^(□))) */
+    if(c.pos>=arrDigits(c.arr) && deleteAtTrailingEnd(c)) return;
     var npw=delDigitIn(c.arr,c.pos);
     if(npw>=0) c.pos=npw;
     return;
@@ -1990,6 +2144,7 @@ function deletePower(c,tgt){
   }
   if(!ef){ ef={arr:powCtx.exp,pos:0,node:powCtx,slot:"exp"}; stack.push(ef); }
   ef.pos=arrDigits(powCtx.exp);
+  if(deleteAtTrailingEnd(ef)) return;
   var enp=delDigitIn(ef.arr,ef.pos);
   if(enp>=0) ef.pos=enp;
 }
@@ -2049,8 +2204,9 @@ function deleteTemplateEdge(c){
   var ek=edge?lastSlot(edge):null;
   if(!ek) return false;
   enterEnd(edge,ek);
-  var f=cur(), nep=delDigitIn(f.arr,f.pos);
-  if(nep>=0) f.pos=nep; else leaveField(1);
+  /* descend through trailing templates so a nested tower loses ONE digit of
+     its deepest level instead of the whole inner subtree */
+  if(!deleteAtTrailingEnd(cur())) leaveField(1);
   return true;
 }
 /* at the head of a template slot: step back into the previous slot and delete

@@ -492,9 +492,11 @@ console.log("\n--- power keys: the four contexts of the spec ---");
   check("B: ...and the caret enters that square", run(["2","POW","4","POW"]).getCursor().slot, "exp");
 
   /* --- C: between a base and its exponent (2|^4) -------------------------- */
-  const CB=["2","POW","4","LEFT","LEFT"];          /* caret at base@1 = "2|^4" */
+  /* Phase 4: the shared base/exponent boundary is represented by the exponent's
+     offset 0 ("2|4"), one press left of the old base@end state. */
+  const CB=["2","POW","4","LEFT"];
   check("C: caret sits at the base/exponent boundary",
-    (()=>{ const c=run(CB); return c.getCursor().slot+"@"+c.getCursor().pos; })(), "base@1");
+    (()=>{ const c=run(CB); return c.getCursor().slot+"@"+c.getCursor().pos; })(), "exp@0");
   for(const key of [["SQR"],["SHIFT","SQR"]]){
     const c=run(CB);
     const before=shape(c);

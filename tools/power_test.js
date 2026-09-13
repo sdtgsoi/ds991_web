@@ -101,8 +101,8 @@ t("I1  basic power","2 POW 3",{line:"23|",tree:"pow{[N2]^[N3]}"});
 t("I2  power tower","2 POW 3 POW 4",{line:"234|",tree:"pow{[N2]^[pow{[N3]^[N4]}]}"});
 t("I3  EXP_END + x2 wraps a layer","2 POW 3 SQR",{line:"232|",tree:"pow{[N2]^[pow{[N3]^[N2]}]}"});
 t("I4  EXP_END + x^() wraps empty layer","2 POW 3 POW",{line:"23|",tree:"pow{[N2]^[pow{[N3]^[]}]}"});
-t("I5a boundary + x2 ignored","2 POW 4 LEFT LEFT SQR",{line:"2|4",tree:"pow{[N2]^[N4]}"});
-t("I5b boundary + x^() nests","2 POW 4 LEFT LEFT POW",{line:"2|4",tree:"pow{[N2]^[pow{[]^[N4]}]}"});
+t("I5a boundary + x2 ignored","2 POW 4 LEFT SQR",{line:"2|4",tree:"pow{[N2]^[N4]}"});
+t("I5b boundary + x^() nests","2 POW 4 LEFT POW",{line:"2|4",tree:"pow{[N2]^[pow{[]^[N4]}]}"});
 t("I6a OUTSIDE_POWER + x2 ignored","2 POW 4 RIGHT SQR",{line:"24|",tree:"pow{[N2]^[N4]}"});
 t("I6b OUTSIDE_POWER + x^() ignored","2 POW 4 RIGHT POW",{line:"24|",tree:"pow{[N2]^[N4]}"});
 t("I6c OUTSIDE_POWER + x3 ignored","2 POW 4 RIGHT SHIFT SQR",{line:"24|",tree:"pow{[N2]^[N4]}"});
@@ -123,15 +123,34 @@ t("D1  2^(3|) DEL -> 2^box","2 POW 3 DEL",{line:"2|",tree:"pow{[N2]^[]}"});
 t("D2  2^(|) DEL -> 2","2 POW DEL",{line:"2|",tree:"N2"});
 t("D3  2^(|3) DEL -> 2|3","2 POW 3 LEFT DEL",{line:"2|3",tree:"N2,N3"});
 t("D4  123^(|45) DEL -> 123|45","1 2 3 POW 4 5 LEFT LEFT DEL",{line:"123|45",tree:"N123,N45"});
-t("D5  123^(|45^67) DEL -> 123|45^67","1 2 3 POW 4 5 POW 6 7 LEFT LEFT LEFT LEFT LEFT LEFT DEL",
+t("D5  123^(|45^67) DEL -> 123|45^67","1 2 3 POW 4 5 POW 6 7 LEFT LEFT LEFT LEFT DEL",
   {line:"123|4567",tree:"N123,pow{[N45]^[N67]}"});
-t("D6  123^(|^45) DEL -> 123|^45","1 2 3 POW POW 4 5 LEFT LEFT LEFT LEFT DEL",
+t("D6  123^(|^45) DEL -> 123|^45","1 2 3 POW POW 4 5 LEFT LEFT DEL",
   {line:"123|45",tree:"pow{[N123]^[N45]}"});
 t("D7  2^| (exp empty) DEL -> 2","RIGHT DEL",{line:"2|",tree:"N2"},{pre:[P([NT(2)],[])]});
-t("D8  2^|3 (base edge) DEL -> 2^box","2 POW 3 LEFT LEFT DEL",{line:"2|",tree:"pow{[N2]^[]}"});
+/* D8 after Phase 4: the base's right edge is no longer a LEFT stop (base@end and
+   exp@0 are one shared boundary, represented by exp@0). The state still exists
+   via UP, and there DEL still acts on the exponent. */
+t("D8  2^|3 (base edge via UP) DEL -> 2^box","2 POW 3 UP DEL",{line:"2|",tree:"pow{[N2]^[]}"});
 t("D9  template right edge DEL","FRAC 1 2 DOWN 3 4 RIGHT DEL",{line:"(12)/(3|)",tree:"frac{[N12]/[N3]}"});
 t("D10 integral lower-slot start DEL","INTG XKEY DOWN DEL",{tree:"intg{lo[],up[],body[]}"});
 t("D11 integral integrand start DEL","INTG XKEY DEL DEL",{line:"|",tree:""});
+/* D12-D15: DEL at the end of a nested tower must remove ONE digit of the deepest
+   level, not the whole inner subtree (2^3^4| -> 2^□ was the reported bug). */
+t("D12 2^3^4 outside DEL -> 2^(3^(box))","2 POW 3 POW 4 RIGHT DEL",
+  {line:"23|",tree:"pow{[N2]^[pow{[N3]^[]}]}"});
+t("D13 2^3^4 deepest end DEL -> 2^(3^(box))","2 POW 3 POW 4 DEL",
+  {line:"23|",tree:"pow{[N2]^[pow{[N3]^[]}]}"});
+t("D14 2^3^4^5 outside DEL -> 2^(3^(4^(box)))","2 POW 3 POW 4 POW 5 RIGHT DEL",
+  {line:"234|",tree:"pow{[N2]^[pow{[N3]^[pow{[N4]^[]}]}]}"});
+t("D15 |2^3^4 DEL is a no-op at the start","2 POW 3 POW 4 LEFT LEFT LEFT DEL",
+  {line:"|234",tree:"pow{[N2]^[pow{[N3]^[N4]}]}"});
+/* D16/D17: the base-start state inside an exponent collapses ONE nesting level
+   (it shares its screen spot with the enclosing exponent's start). */
+t("D16 2|3^4 DEL collapses one level","2 POW 3 POW 4 LEFT LEFT DEL",
+  {line:"2|34",tree:"N2,pow{[N3]^[N4]}"});
+t("D17 2|3^4 via the exponent start collapses too","2 POW 3 POW 4 LEFT DEL",
+  {line:"23|4",tree:"pow{[N2]^[N3,N4]}"});
 
 console.log("\n--- N. navigation (doc 3.3) ---");
 t("N2a empty exponent box: LEFT passes through","2 POW LEFT",{line:"|2\u2610",tree:"pow{[N2]^[]}"});
@@ -142,11 +161,13 @@ t("N5a after answer LEFT lands at end","2 POW 3 EQUALS LEFT",{line:"23|",tree:"p
 t("N5b after answer RIGHT lands at start","2 POW 3 EQUALS RIGHT",{line:"|23",tree:"pow{[N2]^[N3]}"});
 t("N5c after answer DEL edits the end","2 POW 3 EQUALS DEL",{line:"2|",tree:"pow{[N2]^[]}"});
 
-/* N1: the boundary has three equivalent stops, so the two directions walk
-   DIFFERENT cycles. These numbers are the documented current baseline; Phase 4
-   (boundary unification) must make LEFT and RIGHT agree, at which point this
-   block is updated to the smaller common cycle. */
-console.log("\n--- N1 baseline: LEFT/RIGHT cycles (doc 3.3 / Phase 4 flips this) ---");
+/* N1: after Phase 4 (boundary unification) the tower has at most TWO states per
+   screen position - the standard enter/exit press at a structural boundary - and
+   LEFT/RIGHT walk the same positions in opposite order. LEFT is still exactly one
+   press longer than RIGHT: at the very start of the expression, base@0 (type into
+   the base) and root@0 (insert before the power) render at the same spot and both
+   must stay reachable, so they are the one remaining pair of states. */
+console.log("\n--- N1: LEFT/RIGHT cycles (Phase 4) ---");
 {
   const cycle=(keys,dir)=>{
     const {calc}=boot();
@@ -159,14 +180,32 @@ console.log("\n--- N1 baseline: LEFT/RIGHT cycles (doc 3.3 / Phase 4 flips this)
     }
     return n+1;
   };
-  const cases=[["2 POW 3",6,5],["2 POW 3 POW 4",10,7],["2 POW 3 POW 4 POW 5",14,9]];
+  const cases=[["2 POW 3",5,4],["2 POW 3 POW 4",6,5],["2 POW 3 POW 4 POW 5",7,6]];
   for(const [keys,wl,wr] of cases){
     const gl=cycle(keys,"LEFT"), gr=cycle(keys,"RIGHT");
-    const ok=gl===wl&&gr===wr;
+    const ok=gl===wl&&gr===wr&&gl===gr+1;
     ok?pass++:fail++;
     console.log((ok?"ok   ":"FAIL ")+("N1 "+keys).padEnd(40)+" LEFT="+gl+" RIGHT="+gr+
-      (ok?"":("   want LEFT="+wl+" RIGHT="+wr)));
+      (ok?"":("   want LEFT="+wl+" RIGHT="+wr+" and LEFT=RIGHT+1")));
   }
+}
+/* N7: the direct counterpart of the user-visible complaint - walking LEFT through
+   a tower must never stop three times at one screen position (the old model
+   visited "2|34" three times in a row). */
+console.log("\n--- N7: no screen position is visited 3x in a row ---");
+{
+  const {calc,screen}=boot();
+  for(const k of "2 POW 3 POW 4".split(" ")) calc.dispatch(k);
+  const lines=[];
+  for(let i=0;i<8;i++){ calc.dispatch("LEFT"); lines.push(exprLine(screen())); }
+  let worst=1, run=1;
+  for(let i=1;i<lines.length;i++){
+    run=(lines[i]===lines[i-1])?run+1:1;
+    if(run>worst) worst=run;
+  }
+  const ok=worst<=2; ok?pass++:fail++;
+  console.log((ok?"ok   ":"FAIL ")+"N7 longest run at one screen position".padEnd(40)+
+    " max="+worst+"  ["+lines.join(" ")+"]");
 }
 
 console.log("\n--- N6: UP/DOWN are reversible in a power tower (fixed in Phase 3) ---");
