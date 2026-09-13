@@ -7,7 +7,7 @@
  */
 const {execFileSync}=require("child_process");
 const path=require("path");
-const suites=["cursor_test.js","fraction_test.js","dpad_test.js","regression_test.js","ui_test.js"];
+const suites=["cursor_test.js","fraction_test.js","dpad_test.js","power_test.js","regression_test.js","ui_test.js"];
 let failed=0;
 for(const s of suites){
   let out="",ok=true;
