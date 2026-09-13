@@ -125,8 +125,13 @@
   }
   .exprline{
     display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-start;
-    font-size:19px; min-height:44px; overflow:hidden; line-height:1.15;
+    font-size:19px; min-height:44px; line-height:1.15;
     direction:ltr;
+    /* NOT overflow:hidden: an exponent is raised with a relative offset, which
+       does not grow the line box, so clipping here cut the upper levels of a
+       tower of powers off the screen. Vertical position is handled by
+       ensureCursorVisible() instead. */
+    overflow:visible;
   }
   .exprline.scroll{overflow-x:auto; overflow-y:hidden; scrollbar-width:none;}
   .exprline::-webkit-scrollbar{display:none;}
@@ -152,8 +157,14 @@
      why the exponent used to sit in the middle on the right).
      The size is an absolute .7em and nested exponents reset it, so "2^3",
      "2^3^4", "2^3^4^5"... all print at the SAME size and only step up-right. */
-  .sup{font-size:.7em;vertical-align:baseline;line-height:1;position:relative;top:-.5em;}
-  .sup .sup{font-size:1em;}
+  /* Every exponent uses the SAME size whatever its nesting depth; only the
+     position moves up and to the right. A depth-scaled font made deep towers
+     unreadable, and a relative font-size compounded ("2^3^4^5" shrinking at
+     every level) - see the spec, section 7. */
+  /* The size and the lift of an exponent are no longer constants here: the
+     renderer emits them per level (renderExponent), so a nested exponent keeps
+     the same size while its offset grows. */
+  .sup{font-size:.70em;vertical-align:baseline;line-height:1;position:relative;}
   .sub{font-size:.62em;line-height:1;}
   .logbase{display:inline;white-space:nowrap;}
   .logbase .sub{vertical-align:-0.34em;}
@@ -508,6 +519,14 @@ var stack = [{arr:root,pos:0}];
 
 /* Innermost cursor frame. */
 function cur(){ return stack[stack.length-1]; }
+/* An EMPTY exponent box is a placeholder with no content, so the caret passes
+   straight over it: it is entered deliberately (the power keys) but LEFT/RIGHT
+   from inside it leave the power instead of stopping inside the box. */
+function emptyExpRect(){
+  var f=cur();
+  if(!f || !f.node || f.node.t!=="pow" || f.slot!=="exp") return null;
+  return arrDigits(f.node.exp)===0 ? f : null;
+}
 function isNode(o,t){ return o && typeof o==="object" && o.t===t; }
 
 /* ---- token factories -------------------------------------------------------
@@ -747,47 +766,49 @@ var CARET='<span class="cursor"></span>';
 var hideCaret=false;
 function caretHTML(){ return hideCaret?"":CARET; }
 /* draw one token, splicing the caret in at the requested digit offset */
-function renderNodeAt(n,at){
-  if(at===undefined||at===null) return renderNode(n);
+function renderNodeAt(n,at,ctx){
+  ctx=baseCtx(ctx);
+  if(at===undefined||at===null) return renderNode(n,ctx);
   if(n.t==="num"){
     var s=String(n.v);
     return esc(s.slice(0,at))+caretHTML()+esc(s.slice(at));
   }
-  if(at<=0) return caretHTML()+renderNode(n);
-  if(at>=digitsIn(n)) return renderNode(n)+caretHTML();
+  if(at<=0) return caretHTML()+renderNode(n,ctx);
+  if(at>=digitsIn(n)) return renderNode(n,ctx)+caretHTML();
   if(n.t==="paren"||n.t==="abs"){
-    if(at===1) return '<span class="math paren">'+caretHTML()+'('+renderArr(n.body)+')</span>';
-    if(at>=2+(n.body?arrDigits(n.body):0)) return '<span class="math paren">('+renderArr(n.body)+')'+caretHTML()+'</span>';
+    if(at===1) return '<span class="math paren">'+caretHTML()+'('+renderArr(n.body,ctx)+')</span>';
+    if(at>=2+(n.body?arrDigits(n.body):0)) return '<span class="math paren">('+renderArr(n.body,ctx)+')'+caretHTML()+'</span>';
   }
   if(n.t==="frac"){
     var nd=slotDigits(n.num), dd=slotDigits(n.den), total=nd+dd;
-    if(at<=0) return caretHTML()+renderNode(n);
-    if(at>=total) return renderNode(n)+caretHTML();
-    if(at<nd) return '<span class="math frac"><span class="num">'+renderArrAt(n.num, at)+'</span><span class="den">'+renderArr(n.den)+'</span></span>';
-    if(at===nd) return '<span class="math frac"><span class="num">'+renderArr(n.num)+'</span>'+caretHTML()+'<span class="den">'+renderArr(n.den)+'</span></span>';
-    return '<span class="math frac"><span class="num">'+renderArr(n.num)+'</span><span class="den">'+renderArrAt(n.den, at-nd)+'</span></span>';
+    if(at<=0) return caretHTML()+renderNode(n,ctx);
+    if(at>=total) return renderNode(n,ctx)+caretHTML();
+    if(at<nd) return '<span class="math frac"><span class="num">'+renderArrAt(n.num, at, ctx)+'</span><span class="den">'+renderArr(n.den,ctx)+'</span></span>';
+    if(at===nd) return '<span class="math frac"><span class="num">'+renderArr(n.num,ctx)+'</span>'+caretHTML()+'<span class="den">'+renderArr(n.den,ctx)+'</span></span>';
+    return '<span class="math frac"><span class="num">'+renderArr(n.num,ctx)+'</span><span class="den">'+renderArrAt(n.den, at-nd, ctx)+'</span></span>';
   }
   if(n.t==="mixed"){
     var wd=slotDigits(n.whole), nd=slotDigits(n.num), dd=slotDigits(n.den);
     var total=wd+nd+dd;
-    if(at<=0) return caretHTML()+renderNode(n);
-    if(at>=total) return renderNode(n)+caretHTML();
-    if(at<wd) return '<span class="math mixed">'+renderArrAt(n.whole, at)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num)+'</span><span class="den">'+renderArr(n.den)+'</span></span></span>';
-    if(at===wd) return '<span class="math mixed">'+renderArr(n.whole)+caretHTML()+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num)+'</span><span class="den">'+renderArr(n.den)+'</span></span></span>';
-    if(at<wd+nd) return '<span class="math mixed">'+renderArr(n.whole)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArrAt(n.num, at-wd)+'</span><span class="den">'+renderArr(n.den)+'</span></span></span>';
-    if(at===wd+nd) return '<span class="math mixed">'+renderArr(n.whole)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num)+'</span>'+caretHTML()+'<span class="den">'+renderArr(n.den)+'</span></span></span>';
-    return '<span class="math mixed">'+renderArr(n.whole)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num)+'</span><span class="den">'+renderArrAt(n.den, at-wd-nd)+'</span></span></span>';
+    if(at<=0) return caretHTML()+renderNode(n,ctx);
+    if(at>=total) return renderNode(n,ctx)+caretHTML();
+    if(at<wd) return '<span class="math mixed">'+renderArrAt(n.whole, at, ctx)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num,ctx)+'</span><span class="den">'+renderArr(n.den,ctx)+'</span></span></span>';
+    if(at===wd) return '<span class="math mixed">'+renderArr(n.whole,ctx)+caretHTML()+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num,ctx)+'</span><span class="den">'+renderArr(n.den,ctx)+'</span></span></span>';
+    if(at<wd+nd) return '<span class="math mixed">'+renderArr(n.whole,ctx)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArrAt(n.num, at-wd, ctx)+'</span><span class="den">'+renderArr(n.den,ctx)+'</span></span></span>';
+    if(at===wd+nd) return '<span class="math mixed">'+renderArr(n.whole,ctx)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num,ctx)+'</span>'+caretHTML()+'<span class="den">'+renderArr(n.den,ctx)+'</span></span></span>';
+    return '<span class="math mixed">'+renderArr(n.whole,ctx)+'<span class="math frac" style="font-size:.9em"><span class="num">'+renderArr(n.num,ctx)+'</span><span class="den">'+renderArrAt(n.den, at-wd-nd, ctx)+'</span></span></span>';
   }
-  return renderNode(n)+caretHTML();
+  return renderNode(n,ctx)+caretHTML();
 }
-function renderArr(arr){
+function renderArr(arr,ctx){
+  ctx=baseCtx(ctx);
   var curArr=cur().arr, curPos=cur().pos;
   var isCur=(arr===curArr && !S.menu && !S.error);
   var out="", t=0;
   for(var i=0;i<arr.length;i++){
     var nd=digitsIn(arr[i]);
-    if(isCur && curPos>=t && curPos<t+nd) out+=renderNodeAt(arr[i],curPos-t);
-    else out+=renderNode(arr[i]);
+    if(isCur && curPos>=t && curPos<t+nd) out+=renderNodeAt(arr[i],curPos-t,ctx);
+    else out+=renderNode(arr[i],ctx);
     t+=nd;
   }
   if(isCur && curPos>=t) out+=caretHTML();
@@ -797,12 +818,13 @@ function renderArr(arr){
    global cursor. Used when the parent view needs to show a caret inside a
    template slot (e.g. a fraction numerator) while the cursor is not actually
    inside that slot. */
-function renderArrAt(arr, at){
+function renderArrAt(arr, at, ctx){
+  ctx=baseCtx(ctx);
   var out="", t=0;
   for(var i=0;i<arr.length;i++){
     var nd=digitsIn(arr[i]);
-    if(at>=t && at<t+nd) out+=renderNodeAt(arr[i], at-t);
-    else out+=renderNode(arr[i]);
+    if(at>=t && at<t+nd) out+=renderNodeAt(arr[i], at-t, ctx);
+    else out+=renderNode(arr[i], ctx);
     t+=nd;
   }
   if(at>=t) out+=CARET;
@@ -816,12 +838,86 @@ function slotEditing(arr){
 function slotCursor(arr){
   return slotEditing(arr)?'<span class="cursor"></span>':"";
 }
-function slotOrBox(arr,boxCls,extra){
-  if(arr.length) return renderArr(arr);      /* renderArr also emits the caret */
+/* ============================ LAYOUT CONTEXT ============================ */
+/* The renderer carries a small context down the tree instead of letting CSS
+ * guess the nesting. It is what makes every exponent the same size and what
+ * lets the exponent's lift grow with the depth:
+ *
+ *   { powerDepth: 0, fontMode: "NORMAL" | "EXPONENT", layoutMode: "DISPLAY" }
+ *
+ * fontMode decides the size and is deliberately NOT inherited through an
+ * exponent: entering an exponent always sets EXPONENT, and a nested exponent
+ * sets it again to the same value, so level 2, 3, 4 ... never shrink. Only
+ * powerDepth increases, and that is what drives the vertical offset. */
+/* How far each further level rises. It has to be small enough that a realistic
+ * tower still fits the LCD (each step is a full line of the LCD), yet large
+ * enough to read: 0.30 * 19px ~= 5.7px per level keeps four levels on screen. */
+var EXP_STEP_EM = 0.80;
+var EXP_FONT_RATIO = 0.70;
+/* The size must be ABSOLUTE, not a percentage: `.70em` measured against the
+ * parent exponent would compound (70%, 49%, 34% ...) and a tower of powers
+ * would shrink into illegibility. `rootFont` is captured once, on the first
+ * exponent, and every deeper level is that value times EXP_FONT_RATIO - the
+ * same size at every depth, as the spec requires. */
+function measureRootFont(){
+  try{
+    if(!window.getComputedStyle) return null;
+    var el=document.getElementById("exprline")||document.body;
+    return parseFloat(window.getComputedStyle(el).fontSize)||null;
+  }catch(e){ return null; }
+}
+function baseCtx(ctx){ return ctx || {powerDepth:0, fontMode:"NORMAL", layoutMode:"DISPLAY", rootFont:null}; }
+/* the context a top-level render starts from, carrying the real font size */
+var _rootFontCache=undefined;
+function rootCtx(){
+  if(_rootFontCache===undefined) _rootFontCache=measureRootFont();
+  return {powerDepth:0, fontMode:"NORMAL", layoutMode:"DISPLAY", rootFont:_rootFontCache||null};
+}
+function expCtx(ctx){
+  var c=baseCtx(ctx);
+  return {powerDepth:c.powerDepth+1, fontMode:"EXPONENT",
+          layoutMode:c.layoutMode, rootFont:c.rootFont||null};
+}
+/* the inline style that gives an exponent its size and lift */
+function expStyle(ctx){
+  /* An absolute size is what keeps every level equal. When it cannot be
+     measured (no layout engine, e.g. the Node harness) fall back to 1em: the
+     surrounding .sup already scaled us, so 1em keeps the SAME size instead of
+     compounding down to 70/49/34%. */
+  var size = ctx.rootFont ? (ctx.rootFont*EXP_FONT_RATIO).toFixed(2)+"px" : "1em";
+  /* One CONSTANT step per level, not depth * step: a .sup is positioned
+     relative to its parent .sup, so the offsets already accumulate down the
+     nesting chain. Multiplying by the depth here made the gaps grow
+     (13.6, 18.3, 22.8 px) instead of staying even. */
+  var lift = ctx.rootFont ? (ctx.rootFont*EXP_STEP_EM).toFixed(2)+"px"
+                          : (EXP_STEP_EM).toFixed(2)+"em";
+  return 'font-size:'+size+';top:-'+lift+';';
+}
+function slotOrBox(arr,boxCls,extra,ctx){
+  if(arr.length) return renderArr(arr,ctx);  /* renderArr also emits the caret */
   if(slotEditing(arr)) return caretHTML();   /* empty slot being edited */
   return '<span class="box'+(boxCls?" "+boxCls:"")+'"'+(extra||"")+'></span>';
 }
-function renderNode(n){
+/* renderExponent(node, ctx): the exponent of a power. It always enters
+   EXPONENT font mode and one level deeper, then lays the two boxes out with
+   layoutPower(). */
+function renderExponent(arr,ctx){
+  return '<span class="sup" style="'+expStyle(expCtx(ctx))+'">'+slotOrBox(arr,null,null,expCtx(ctx))+'</span>';
+}
+/* layoutPower(baseHTML, expHTML): what is left is the horizontal placement -
+   the exponent follows the base immediately, which is also what the caret
+   offset model assumes. */
+function layoutPower(baseHTML,expHTML){
+  return '<span class="math">'+baseHTML+expHTML+'</span>';
+}
+function renderPow(n,ctx){
+  var c=baseCtx(ctx);
+  var base=slotOrBox(n.base,null,null,{powerDepth:c.powerDepth,fontMode:"NORMAL",layoutMode:c.layoutMode});
+  var exp =renderExponent(n.exp,c);
+  return layoutPower(base,exp);
+}
+function renderNode(n,ctx){
+  ctx=baseCtx(ctx);
   if(!n) return "";
   switch(n.t){
     case "num": return esc(n.v);
@@ -829,15 +925,15 @@ function renderNode(n){
     case "variable": return '<span class="math">'+esc(n.name)+'</span>';
     case "const": return constSym(n.name);
     case "post": return renderNode({t:"dummy"})+esc(n.v);
-    case "func": return '<span class="math">'+fnSym(n.name)+'('+slotOrBox(n.arg)+')</span>';
-    case "paren": return '<span class="math paren">('+slotOrBox(n.body)+')</span>';
-    case "abs": return '<span class="math">|'+slotOrBox(n.body)+'|</span>';
-    case "frac": return '<span class="math frac"><span class="num">'+slotOrBox(n.num)+'</span><span class="den">'+slotOrBox(n.den)+'</span></span>';
+    case "func": return '<span class="math">'+fnSym(n.name)+'('+slotOrBox(n.arg,null,null,ctx)+')</span>';
+    case "paren": return '<span class="math paren">('+slotOrBox(n.body,null,null,ctx)+')</span>';
+    case "abs": return '<span class="math">|'+slotOrBox(n.body,null,null,ctx)+'|</span>';
+    case "frac": return '<span class="math frac"><span class="num">'+slotOrBox(n.num,null,null,ctx)+'</span><span class="den">'+slotOrBox(n.den,null,null,ctx)+'</span></span>';
     case "mixed": return '<span class="math mixed">'+slotOrBox(n.whole)+'<span class="math frac" style="font-size:.9em"><span class="num">'+slotOrBox(n.num)+'</span><span class="den">'+slotOrBox(n.den)+'</span></span></span>';
-    case "pow": return '<span class="math">'+slotOrBox(n.base)+'<span class="sup">'+slotOrBox(n.exp)+'</span></span>';
-    case "sqrt": return '<span class="math sqrt"><span class="rad">\u221a</span><span class="body">'+slotOrBox(n.body)+'</span></span>';
-    case "root": return '<span class="math sqrt"><span class="sup">'+slotOrBox(n.n)+'</span><span class="rad">\u221a</span><span class="body">'+slotOrBox(n.body)+'</span></span>';
-    case "logbase": return '<span class="logbase">log<span class="sub">'+slotOrBox(n.base)+'</span><span class="lbp">('+slotOrBox(n.arg)+')</span></span>';
+    case "pow": return renderPow(n,ctx);
+    case "sqrt": return '<span class="math sqrt"><span class="rad">\u221a</span><span class="body">'+slotOrBox(n.body,null,null,ctx)+'</span></span>';
+    case "root": return '<span class="math sqrt"><span class="sup">'+slotOrBox(n.n,null,null,ctx)+'</span><span class="rad">\u221a</span><span class="body">'+slotOrBox(n.body,null,null,ctx)+'</span></span>';
+    case "logbase": return '<span class="logbase">log<span class="sub">'+slotOrBox(n.base,null,null,ctx)+'</span><span class="lbp">('+slotOrBox(n.arg,null,null,ctx)+')</span></span>';
     /* Printed as sign + bounds stack, then the integrand to their right. The
        bounds are absolutely positioned beside the sign so that the document
        order stays in navigation order (integrand first) without the integrand
@@ -991,6 +1087,9 @@ function digitsIn(n){
   if(tn==="frac") return slotDigits(n.num)+slotDigits(n.den);
   if(tn==="mixed") return slotDigits(n.whole)+slotDigits(n.num)+slotDigits(n.den);
   if(tn==="logbase") return 4+(n.base?arrDigits(n.base):0)+(n.arg?arrDigits(n.arg):0)+2;
+  /* a power needs its own caret positions or the caret lands ON the node instead
+     of after it: the base digits, the "^" itself, then the exponent */
+  if(tn==="pow") return slotDigits(n.base)+1+slotDigits(n.exp);
   if(tn==="sqrt") return 1+(n.body?arrDigits(n.body):0);
   if(tn==="root") return 1+(n.n?arrDigits(n.n):0)+1+(n.body?arrDigits(n.body):0);
   /* The integral's slots are laid out in NAVIGATION order so that a single
@@ -1173,6 +1272,148 @@ function lastSlot(n){
 function isFactor(n){
   return n && ["num","variable","const","func","frac","mixed","pow","sqrt","root","paren","abs","post","logbase","intg","deriv","sum","prod"].indexOf(n.t)>=0;
 }
+/* ============================ POWER KEYS ============================ */
+/* Specification (docs: "指数功能错误分析与修改计划" v1.0).
+ *
+ * One context resolver plus one operation handler, so x^(), x^2 and x^3 can
+ * never disagree about the same caret position.
+ *
+ *   OUTSIDE_POWER      the caret sits right after a finished power and is NOT
+ *                      inside any exponent slot  -> every power key is ignored
+ *   EXP_END            caret at the end of an exponent slot
+ *                      x^2/x^3 append to the right end of that exponent;
+ *                      x^() appends an empty exponent and enters it
+ *   BASE_EXP_BOUNDARY  caret in the base of a power that already has an
+ *                      exponent, i.e. between base and exponent
+ *                      x^2/x^3 are ignored; x^() inserts a power in front of
+ *                      the exponent  ->  2|^4  + x^()  ->  2^(□^4)
+ *   NUMBER_MIDDLE      caret inside a number
+ *                      x^2/x^3 raise the LEFT part and keep the right part;
+ *                      x^() makes the LEFT part the base and the RIGHT part the
+ *                      exponent, with the caret entering that exponent
+ *   NORMAL             ordinary editing - the value left of the caret becomes
+ *                      the base of a new power
+ *
+ * A parenthesised power is NOT a power context: "(2^4)|" lives in the root
+ * expression, so NORMAL applies and x^3 gives (2^4)^3.
+ */
+function expFrames(){
+  for(var d=stack.length-1;d>0;d--){
+    var f=stack[d];
+    if(f.node && f.node.t==="pow" && f.slot==="exp") return d;
+  }
+  return -1;
+}
+function inExponent(){ return expFrames()>=0; }
+/* the caret is outside a power, right at its trailing edge */
+function afterPower(){
+  var c=cur();
+  var i=insertIndex(c.arr,c.pos);
+  if(i<=0) return false;
+  var n=c.arr[i-1];
+  if(!n||n.t!=="pow") return false;
+  return c.pos>=tokenStart(c.arr,i-1)+arrDigits(n);
+}
+/* the caret is inside a power's BASE, which already has an exponent */
+function atBaseExpBoundary(){
+  for(var d=stack.length-1;d>0;d--){
+    var f=stack[d];
+    if(f.node && f.node.t==="pow" && f.slot==="base"){
+      return f.node.exp.length>0;
+    }
+  }
+  return false;
+}
+function getPowerContext(){
+  if(!inExponent()){
+    if(atBaseExpBoundary()) return {type:"BASE_EXP_BOUNDARY"};
+    if(stack.length<=1 && afterPower()) return {type:"OUTSIDE_POWER"};
+    return {type:"NORMAL"};
+  }
+  var f=stack[expFrames()];
+  var total=arrDigits(f.node.exp);
+  if(f.pos<=0 || f.pos>=total) return {type:"EXP_END", frame:f};
+  return {type:"NUMBER_MIDDLE", frame:f};
+}
+/* put the caret in `pw`'s base and return true */
+function enterBase(pw){
+  stack.push({arr:pw.base,pos:0,node:pw,slot:"base"});
+  return true;
+}
+/* the base is already filled, so the caret goes to the exponent instead */
+function enterExp(pw){
+  if(pw.base.length===0 && pw.exp.length===0) return enterBase(pw);
+  stack.push({arr:pw.exp,pos:0,node:pw,slot:"exp"});
+  return true;
+}
+/* the value to the left of the caret in `arr`, removed */
+function takeLeftOf(arr,pos){
+  var i=insertIndex(arr,pos);
+  if(i<=0) return null;
+  return arr.splice(i-1,1)[0];
+}
+
+function opExpEnd(ctx, kind){
+  var f=ctx.frame;
+  /* everything left of the caret inside this exponent becomes the basis */
+  var left=f.arr.slice();
+  if(!left.length) return false;
+  var pw;
+  if(kind===null){
+    pw=T_pow(left, []);                 /* the whole left part is the base */
+    f.arr.length=0; f.arr.push(pw);
+    f.pos=tokenStart(f.arr,0)+digitsIn(pw);
+    return enterExp(pw);                /* caret into the new (empty) exponent */
+  }
+  pw=T_pow(left, [T_num(String(kind))]);   /* (4^3) */
+  f.arr.length=0; f.arr.push(pw);
+  f.pos=tokenStart(f.arr,0)+digitsIn(pw);  /* stay in this exponent, after it */
+  return true;
+}
+function opBaseExpBoundary(kind){
+  if(kind!==null) return true;                 /* x^2 / x^3 are ignored here */
+  for(var d=stack.length-1;d>0;d--){
+    var f=stack[d];
+    if(f.node && f.node.t==="pow" && f.slot==="base"){
+      var pw=T_pow([], f.node.exp.slice());    /* []^4 : keeps the old exponent */
+      f.node.exp=[pw];
+      return enterBase(pw);                    /* caret goes into the square */
+    }
+  }
+  return false;
+}
+function opNumberMiddle(ctx, kind){
+  var f=ctx.frame, n=tokenAt(f.arr,f.pos);
+  if(!n || n.t!=="num") return false;
+  var at=offsetInToken(f.arr,f.pos), str=String(n.v);
+  if(at<=0 || at>=str.length) return false;
+  var left=node("num",{v:str.slice(0,at)}), right=node("num",{v:str.slice(at)});
+  var i=f.arr.indexOf(n);
+  if(kind===null){
+    /* 123|456 + x^() -> 123^(456) with the caret inside the new exponent */
+    var pw=T_pow([left],[right]);
+    f.arr.splice(i,1,pw);
+    f.pos=tokenStart(f.arr,i);
+    return enterExp(pw);
+  }
+  /* 123|456 + x^3 -> 123³456 : the left part is raised, the rest stays put */
+  var pw2=T_pow([left],[T_num(String(kind))]);
+  f.arr.splice(i,1,pw2,right);
+  f.pos=tokenStart(f.arr,i)+digitsIn(pw2);
+  return true;
+}
+/* kind is 2 for x^2, 3 for x^3 and null for x^(). Returns true when the key
+   was consumed by one of the power positions above. */
+function handlePowerOperation(kind){
+  var ctx=getPowerContext();
+  switch(ctx.type){
+    case "OUTSIDE_POWER":     return true;          /* ignored on purpose */
+    case "EXP_END":           return opExpEnd(ctx, kind);
+    case "BASE_EXP_BOUNDARY": return opBaseExpBoundary(kind);
+    case "NUMBER_MIDDLE":     return opNumberMiddle(ctx, kind);
+    default:                  return false;         /* NORMAL */
+  }
+}
 function takeOperand(){
   var c=cur(), n=leftToken(c.arr,c.pos);
   if(!n || !isFactor(n)) return null;
@@ -1308,6 +1549,12 @@ function doLeft(){
     stack[0].pos=arrDigits(c.arr);
     return;
   }
+  /* sitting in an EMPTY exponent: that box has nothing to walk through, so
+     LEFT leaves the power and lands just before it (it does not then wrap) */
+  if(c.pos<=0 && emptyExpRect() && stack.length>1){
+    leaveField(-1);
+    return;
+  }
   if(c.pos>0){
     /* Stepping onto a template must land in its LAST slot, not somewhere in the
        middle of its digit span: moving the offset back by one and then
@@ -1348,6 +1595,21 @@ function doLeft(){
 function doRight(){
   var c=cur();
   var total=arrDigits(c.arr);
+  /* an EMPTY exponent box is crossed, not stopped in (see emptyExpRect); the
+     caret still has to be able to step INTO it, so only leave when the caret
+     already sits at the box's own offset 0 */
+  if(c.pos<=0 && emptyExpRect() && stack.length>1){
+    leaveField(1);
+    return;
+  }
+  /* At the end of a power's BASE the next position is the exponent, not the
+     token after the power: this is the "base | exponent" boundary the power
+     keys need (2|^4), and it makes RIGHT walk the power in reading order. */
+  if(c.node && c.node.t==="pow" && c.slot==="base" && c.node.exp.length>0 && c.pos>=total){
+    stack.pop();
+    enter(c.node,"exp");
+    return;
+  }
   if(afterAnswer){
     /* first RIGHT after an answer: land on the far left */
     unwindCursor();
@@ -1437,6 +1699,102 @@ function detachIntegral(n){
    the left INSIDE the template, so take the template away and leave its
    contents (for a power, the base) in the parent expression. The caret lands
    just after those contents, so the boxed slot is gone with the wrapper. */
+/* DEL at the start of an exponent box: drop that level of nesting and append
+   the exponent's contents to the base, so the bracket disappears while nothing
+   the user typed is lost:
+       123^(|456)   -> 123456
+       123^(|)      -> 123
+       123^(|45^67) -> 12345^67      (the exponent held the power 45^67)
+       123^(|^45)   -> 123^45   (the exponent is lifted one level down)
+   The caret lands at the end of the base, i.e. exactly where the merged content
+   ends, so repeated DEL keeps walking left as usual. */
+/* DEL at the START of an exponent box: drop that bracket and let everything it
+   held move one level out, so nothing typed is lost.
+ *
+ * The exponent is usually a power of its own ("345^67"), and its content is
+ * what sits LEFTMOST. That content becomes editable again by taking over the
+ * bracket's old base slot, while the higher exponent stays an exponent:
+ *
+ *     12^(|345^67)   ->  12 345 ^67     i.e. 12345^67
+ *     123^(|45^67)   ->  123 45 ^67     i.e. 12345^67
+ *     123^(|45)      ->  123 45         i.e. 12345
+ *     123^(|)        ->  123
+ *     123^(|^45)     ->  123 ^45        i.e. 123^45   (nothing content-side)
+ *
+ * Only when there is NO content to move out (an empty or "bare exponent" box)
+ * is the whole exponent truly discarded: "123^(|)" -> "123".
+ * The caret ends up right of the base, i.e. exactly where the bracket was. */
+/* DEL at the START of an exponent box: drop that bracket and let its contents
+   move one level out, so nothing typed is lost.
+ *
+ * The exponent is usually a power of its own ("45^67"): then its CONTENT is
+ * that power's base and the HIGHER EXPONENT is that power's exponent. The base
+ * absorbs the content and the higher exponent stays an exponent attached to the
+ * last content token:
+ *
+ *     12^(|345^67)  ->  12345^67
+ *     123^(|45^67)  ->  12345^67
+ *     123^(|45)     ->  12345
+ *     123^(|^45)    ->  123^45     (no content, only the higher exponent)
+ *     123^(|)       ->  123
+ *
+ * The caret ends up just right of the base, i.e. where the bracket used to be. */
+function mergeExponentIntoBase(node){
+  for(var d=stack.length-1;d>0;d--){
+    if(stack[d].node===node){
+      var parent=stack[d-1];
+      stack.length=d;
+      var idx=parent.arr.indexOf(node);
+      if(idx<0) return;
+
+      var outerBase=node.base, e=node.exp;
+      var p=(e.length===1 && e[0] && e[0].t==="pow") ? e[0] : null;
+      var content=(p ? p.base : e).slice();     /* what moves out next to the base */
+      var higher =(p ? p.exp  : []).slice();    /* what stays an exponent        */
+
+      /* the new base = outer base + content, with `higher` attached to whatever
+         ends up last (a fresh power node, never a mutated number) */
+      var newBase=outerBase.concat(content);
+      if(!newBase.length) newBase=[T_num("0")];  /* never an empty base */
+      if(higher.length){
+        var last=newBase.pop();
+        newBase.push(T_pow([last], higher));
+      }
+      parent.arr.splice.apply(parent.arr,[idx,1].concat(newBase));
+      /* The caret belongs just RIGHT OF THE BASE, i.e. exactly where the deleted
+         bracket began:
+             123^(|45)    -> 123|45
+             123^(|456)   -> 123|456
+             123^(|^45)   -> 123|^45
+             123^(|45^67) -> 123|45^67
+         When a higher exponent survived, the last token is a power and its base
+         slot IS the "right of the base" position, so the caret goes in there at
+         its end; otherwise a plain offset after the base is enough. */
+      var tail=newBase[newBase.length-1];
+      if(tail && tail.t==="pow" && arrDigits(tail.exp)>0){
+        stack.push({arr:tail.base,pos:arrDigits(tail.base),node:tail,slot:"base"});
+        return;
+      }
+      parent.pos=tokenStart(parent.arr,idx)+arrDigits(outerBase);
+      return;
+    }
+  }
+}
+/* Remove a power's exponent box and keep its base where the power stood.
+   Used by DEL at the base's right edge when the box is empty. */
+function detachExponent(node){
+  for(var d=stack.length-1;d>0;d--){
+    if(stack[d].node===node){
+      var parent=stack[d-1];
+      stack.length=d;
+      var idx=parent.arr.indexOf(node);
+      if(idx<0) return;
+      parent.arr.splice.apply(parent.arr,[idx,1].concat(node.base));
+      parent.pos=tokenStart(parent.arr,idx)+arrDigits(node.base);
+      return;
+    }
+  }
+}
 function unwrapTemplate(node){
   for(var d=stack.length-1;d>0;d--){
     if(stack[d].node===node){
@@ -1491,12 +1849,45 @@ function doDel(){
      of one so empty slots stay reachable by the caret, which would make every
      slot look non-empty here. */
   /* --- power rules ----------------------------------------------------------
-     A power prints as base then exponent, so at the exponent's left edge there
-     is nothing to erase to the left of the caret yet; wrapping the caret in a
-     box would be silly, so DEL takes the exponent (and its box) away and leaves
-     the base behind. */
-  if(c.pos<=0 && c.node && c.node.t==="pow" && c.slot==="exp"){
-    unwrapTemplate(c.node);
+     The exponent box is walked in reading order (base, then exponent) and DEL
+     never reaches from the exponent into the base as if the "^" were not there.
+
+       * caret at the START of the exponent box: the whole bracket is removed and
+         its contents are appended to the base, which is what "drop this level"
+         means visually:
+             123^(|456)   -> 123456
+             123^(|)      -> 123
+             123^(|45^67) -> 12345^67
+             123^(|^45)   -> 123^45
+       * elsewhere inside the exponent: erase one digit of the exponent;
+       * at the base's right edge: act on the exponent box (remove it when empty,
+         otherwise erase its last digit). */
+  var powCtx=null, powInExp=false;
+  if(c.node && c.node.t==="pow" && c.slot==="exp"){ powCtx=c.node; powInExp=true; }
+  else if(c.node && c.node.t==="pow" && c.slot==="base"){
+    /* the base's right edge opens onto the exponent box - including an EMPTY
+       one, the case that used to fall through and eat the base's last digit */
+    if(c.pos>=arrDigits(c.node.base)){ powCtx=c.node; powInExp=false; }
+  }
+  if(powCtx){
+    if(powInExp && c.pos<=0){ mergeExponentIntoBase(powCtx); return; }
+    if(powInExp){
+      var npw=delDigitIn(c.arr,c.pos);
+      if(npw>=0) c.pos=npw;
+      return;
+    }
+    var hasExp=arrDigits(powCtx.exp)>0;
+    if(!hasExp){ detachExponent(powCtx); return; }
+    /* from the base side the caret acts at the END of the exponent, next to the
+       "^"; the exponent frame may already exist parked at offset 0 */
+    var ef=null;
+    for(var pd=stack.length-1;pd>0;pd--){
+      if(stack[pd].node===powCtx && stack[pd].slot==="exp"){ ef=stack[pd]; break; }
+    }
+    if(!ef){ ef={arr:powCtx.exp,pos:0,node:powCtx,slot:"exp"}; stack.push(ef); }
+    ef.pos=arrDigits(powCtx.exp);
+    var enp=delDigitIn(ef.arr,ef.pos);
+    if(enp>=0) ef.pos=enp;
     return;
   }
   var intNode=(c.node && c.node.t==="intg" && (c.slot==="body"||c.slot==="lower"||c.slot==="upper")) ? c.node : null;
@@ -1697,13 +2088,37 @@ function inputSqrt(){ startFreshIfResult(); var f=T_sqrt(); ins(f); enter(f,"bod
 function inputCbrt(){ startFreshIfResult(); var f=T_root(); f.n.push(T_num("3")); ins(f); enter(f,"body"); }
 function inputNthRoot(){ startFreshIfResult(); var f=T_root(); ins(f); enter(f,"n"); }
 function inputPow(){
+  if(handlePowerOperation(null)) return;
   startFreshIfResult();
   var base=takeOperand();
   var f=T_pow(base?[base]:[],[]);
   ins(f); enter(f,"exp");
 }
-function inputSquare(){ startFreshIfResult(); var b=takeOperand(); var f=T_pow(b?[b]:[],[T_num("2")]); ins(f); }
-function inputCube(){ startFreshIfResult(); var b=takeOperand(); var f=T_pow(b?[b]:[],[T_num("3")]); ins(f); }
+function inputSquare(){ raisePower(2); }
+function inputCube(){ raisePower(3); }
+/* x^2 / x^3 in NORMAL position: the value left of the caret becomes the base of
+   a new power. A number the caret sits inside is split first, so only its left
+   part is raised ("12" with the caret after the 1 -> (1^2)2). Every exponent
+   position has already been handled by handlePowerOperation(). */
+function raisePower(k){
+  if(handlePowerOperation(k)) return;
+  startFreshIfResult();
+  var c=cur(), m=String(k);
+  /* a number the caret sits inside is cut first, so only its left part is
+     raised: "12" with the caret after the 1 -> (1^2)2 */
+  var n=tokenAt(c.arr,c.pos);
+  if(n && n.t==="num"){
+    var at=offsetInToken(c.arr,c.pos), str=String(n.v), i=c.arr.indexOf(n);
+    if(at>0 && at<str.length){
+      var pw=T_pow([node("num",{v:str.slice(0,at)})],[T_num(m)]);
+      c.arr.splice(i,1,pw,node("num",{v:str.slice(at)}));
+      c.pos=tokenStart(c.arr,i)+digitsIn(pw);
+      return;
+    }
+  }
+  var b=takeLeftOf(c.arr,c.pos);
+  ins(T_pow(b?[b]:[],[T_num(m)]));
+}
 function inputRecip(){ startFreshIfResult(); var b=takeOperand(); var f=T_frac(); f.num.push(T_num("1")); if(b) f.den.push(b); ins(f); if(!b) enter(f,"den"); }
 function inputExp10(){ startFreshIfResult(); var f=T_pow([T_num("10")],[]); ins(f); enter(f,"exp"); }
 function inputExpe(){ startFreshIfResult(); var f=T_pow([T_const("e")],[]); ins(f); enter(f,"exp"); }
@@ -2380,12 +2795,62 @@ function renderExprScreen(){
   var html='<div class="exprwrap">';
   if(S.stoPending){ html+='<div class="prompt">STO \u2192 ?</div>'; }
   if(S.calcPending){ html+='<div class="prompt">'+esc(S.calcPending.prompt)+'</div>'; }
-  html+='<div class="exprline" id="exprline">'+renderArr(root)+'</div>';
+  html+='<div class="exprline" id="exprline">'+renderArr(root,rootCtx())+'</div>';
   html+='<div class="resultline" id="resultline">'+(S.resultShown?S.resultHTML:"")+'</div>';
   html+='</div>';
   SCREEN.innerHTML=html;
   var el=document.getElementById("exprline");
-  if(el){ var c=el.querySelector(".cursor"); if(c && c.scrollIntoView) try{ c.scrollIntoView({block:"nearest",inline:"nearest"}); }catch(e){} }
+  if(el){
+    ensureCursorVisible(el);
+  }
+}
+/* The real bounding box of the rendered expression, measured from the DOM.
+ * Nested exponents use a relative offset, so the browser's idea of the line
+ * height is smaller than what is actually drawn; this is what tells us how far
+ * the drawing sticks out above the line box. */
+function calculateExpressionBounds(el){
+  var wrap=el.parentElement;
+  if(!wrap) return null;
+  var wr=wrap.getBoundingClientRect();
+  var box={top:Infinity,bottom:-Infinity,left:Infinity,right:-Infinity};
+  var parts=el.querySelectorAll(".sup,.math,.num,.cursor");
+  if(!parts || !parts.length) parts=[el];
+  for(var i=0;i<parts.length;i++){
+    var r=parts[i].getBoundingClientRect();
+    if(!r.width && !r.height) continue;
+    if(r.top    <box.top)    box.top   =r.top;
+    if(r.bottom >box.bottom) box.bottom=r.bottom;
+    if(r.left   <box.left)   box.left  =r.left;
+    if(r.right  >box.right)  box.right =r.right;
+  }
+  if(box.top===Infinity) return null;
+  box.top-=wr.top; box.bottom-=wr.top; box.left-=wr.left; box.right-=wr.left;
+  box.wrapHeight=wr.height; box.wrapWidth=wr.width;
+  return box;
+}
+/* Keep the CARET inside the LCD. The expression is offset only as far as the
+ * caret needs, and only when it would otherwise leave the visible area; the
+ * offset is clamped so a very tall tower of exponents can never push the line
+ * completely off screen. The caret wins over the rest of the expression. */
+var MAX_VERTICAL_SHIFT=60;
+function ensureCursorVisible(el){
+  if(!el) return;
+  var c=el.querySelector(".cursor");
+  if(c && c.scrollIntoView) try{ c.scrollIntoView({block:"nearest",inline:"nearest"}); }catch(e){}
+  if(!c){ el.style.transform=""; return; }
+  var bounds=calculateExpressionBounds(el);
+  if(!bounds) return;
+  var cr=c.getBoundingClientRect();
+  var wrap=el.parentElement.getBoundingClientRect();
+  var pad=4;
+  var caretTop=cr.top-wrap.top, caretBottom=cr.bottom-wrap.top;
+  var shift=0;
+  if(caretTop<pad) shift=pad-caretTop;
+  else if(caretBottom>bounds.wrapHeight-pad) shift=bounds.wrapHeight-pad-caretBottom;
+  if(shift>MAX_VERTICAL_SHIFT) shift=MAX_VERTICAL_SHIFT;
+  if(shift<-MAX_VERTICAL_SHIFT) shift=-MAX_VERTICAL_SHIFT;
+  if(shift) el.style.transform="translateY("+shift.toFixed(1)+"px)";
+  else el.style.transform="";
 }
 
 function renderMatrix(){
@@ -2499,7 +2964,7 @@ function renderTable(){
     html+='<div class="panel-title">TABLE</div>';
     html+='<div class="prompt">'+esc(steps[t.step])+'</div>';
     var showArr = (t.step===0)?t.f:((t.step===1)?t.g:root);
-    html+='<div class="exprline" id="exprline">'+renderArr(showArr===root?root:showArr)+'</div>';
+    html+='<div class="exprline" id="exprline">'+renderArr(showArr===root?root:showArr,rootCtx())+'</div>';
     if(t.step>=2){ html+='<div class="prompt">'+esc((t.step===2?t.start:(t.step===3?t.end:t.stepv)))+'</div>'; }
   }
   html+='</div>';
@@ -3301,37 +3766,13 @@ function vectorAction(id){
 /* ============================ PHYSICAL KEYBOARD ============================ */
 /* Maps real keyboard events onto the same key ids the on-screen pad uses, so
    both routes end in dispatch(). */
-/* Two tables, because the two sources answer different questions.
- *
- * KEYCODE is looked up by event.code, i.e. by PHYSICAL key position. It is
- * immune to the input method and to the keyboard layout, which is what makes
- * the letter shortcuts ("s" for SHIFT, "m" for MENU, ...) and the digits keep
- * working no matter which language is active. `code` carries no shift state, so
- * a shifted digit arrives as the same code as the unshifted one - that is why
- * the symbol column is kept separately.
- *
- * KEYSYM is looked up by event.key, i.e. by the CHARACTER produced. It covers
- * the shifted symbols ("+" is Shift+"=" on a US layout, "^" is Shift+"6") and
- * any symbol reachable on a non-US layout where it does not need shift at all.
- *
- * The code table wins, the character table is the fallback, so nothing that
- * works today stops working. */
-var KEYCODE={
-  "Digit0":"0","Digit1":"1","Digit2":"2","Digit3":"3","Digit4":"4",
-  "Digit5":"5","Digit6":"6","Digit7":"7","Digit8":"8","Digit9":"9",
-  "Numpad0":"0","Numpad1":"1","Numpad2":"2","Numpad3":"3","Numpad4":"4",
-  "Numpad5":"5","Numpad6":"6","Numpad7":"7","Numpad8":"8","Numpad9":"9",
-  "NumpadDecimal":"DOT","NumpadAdd":"ADD","NumpadSubtract":"SUB",
-  "NumpadMultiply":"MUL","NumpadDivide":"FRAC",
-  "Enter":"EQUALS","NumpadEnter":"EQUALS","NumpadEqual":"EQUALS",
-  "Backspace":"DEL","Delete":"DEL","Escape":"AC",
-  "ArrowUp":"UP","ArrowDown":"DOWN","ArrowLeft":"LEFT","ArrowRight":"RIGHT",
-  "ShiftLeft":"SHIFT","ShiftRight":"SHIFT",
-  "KeyS":"SHIFT","KeyA":"ALPHA","KeyM":"MENU","KeyO":"OPTN","KeyC":"CALC",
-  "KeyX":"XKEY","KeyE":"ENG","KeyR":"SD",
-  "ContextMenu":"MENU"
-};
-var KEYSYM={
+/* Physical keyboard -> key id. Looked up by event.key, i.e. by the CHARACTER
+   produced, so the same shortcuts work regardless of which physical key the
+   layout puts them on. Mid-composition keys are ignored, so an IME never leaks
+   into the calculator. */
+/* only used when event.key is empty (some on-screen/virtual keyboards) */
+var KEYCODE_FALLBACK={13:"Enter",27:"Escape",8:"Backspace",46:"Delete"};
+var KEYMAP={
   "0":"0","1":"1","2":"2","3":"3","4":"4","5":"5","6":"6","7":"7","8":"8","9":"9",
   ".":"DOT",",":"DOT","+":"ADD","-":"SUB","*":"MUL","/":"FRAC","(":"LPAREN",")":"RPAREN",
   "Enter":"EQUALS","=":"EQUALS","Backspace":"DEL","Escape":"AC","Delete":"DEL",
@@ -3339,26 +3780,15 @@ var KEYSYM={
   "s":"SHIFT","a":"ALPHA","m":"MENU","o":"OPTN","c":"CALC","x":"XKEY",
   "e":"ENG","%":"ANS","^":"POW","!":"INV","r":"SD"
 };
-var KEYMAP=KEYSYM;   /* kept for the shortcut tests and for reference */
-
-/* Is a modifier synthesising a character right now? Pressing Shift+"6" yields
-   "^", and the app's own SHIFT is armed by the same press, so dispatching "6"
-   as well would be wrong: when shift is held the character is the intent. */
-function shiftTypedChar(e){
-  return e.shiftKey && !!(KEYSYM[e.key]||KEYSYM[String(e.key).toLowerCase()]);
-}
-function keyIdForEvent(e){
-  if(!shiftTypedChar(e)){
-    var byCode=KEYCODE[e.code];
-    if(byCode) return byCode;
-  }
-  return KEYSYM[e.key]||KEYSYM[String(e.key).toLowerCase()]||null;
-}
 document.addEventListener("keydown",function(e){
   if(e.metaKey||e.ctrlKey||e.altKey) return;
   /* mid-composition keys belong to the input method, not the calculator */
   if(e.isComposing||e.keyCode===229) return;
-  var id=keyIdForEvent(e);
+  var k=e.key;
+  /* a few virtual keyboards report the keypad keys with an empty key, so fall
+     back to the legacy keyCode for those */
+  if(!k){ k=KEYCODE_FALLBACK[e.keyCode]||""; }
+  var id=KEYMAP[k]||KEYMAP[String(k).toLowerCase()];
   if(!id) return;
   e.preventDefault();
   var el=document.querySelector('[data-key="'+id+'"]');

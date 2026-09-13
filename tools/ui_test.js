@@ -57,7 +57,11 @@ function bootWithKeyboard(){
   vm.runInContext(pageSrc,ctx,{filename:"ds991-keyboard.js"});
   return {
     calc:ctx.__calc,
-    keydown:(k)=>listener({key:k,preventDefault(){},metaKey:false,ctrlKey:false,altKey:false}),
+    /* fire the page's own keydown listener; `extra` overrides the defaults so
+       tests can supply code/shiftKey/isComposing like a real browser event */
+    keydown:(k,extra)=>listener(Object.assign(
+      {key:k,code:"",shiftKey:false,metaKey:false,ctrlKey:false,altKey:false,
+       isComposing:false,keyCode:0,preventDefault(){}}, extra||{})),
   };
 }
 
@@ -178,19 +182,68 @@ console.log("\n--- leaving the answer view to edit ---");
 console.log("\n--- physical keyboard shortcuts ---");
 {
   const src=fs.readFileSync(path.join(__dirname,"..","ds991.html"),"utf8");
-  const map=/var KEYMAP=\{([\s\S]*?)\};/.exec(src)[1];
-  const entry=(k)=>{ const m=new RegExp('"'+k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+'":"([A-Z0-9]+)"').exec(map); return m?m[1]:null; };
+  const table=(()=>{ const m=/var KEYMAP=\{([\s\S]*?)\};/.exec(src); return m?m[1]:""; })();
+  const entry=(k)=>{ const m=new RegExp('"'+k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+'":"([A-Za-z0-9]+)"').exec(table); return m?m[1]:null; };
   check('"^" maps to the power template', entry("^"), "POW");
   check('"/" maps to the fraction template', entry("/"), "FRAC");
   check('"!" maps to the reciprocal', entry("!"), "INV");
+  check('"s" maps to SHIFT', entry("s"), "SHIFT");
+  check("the physical Shift key is NOT a shortcut", /"Shift":/.test(table), false);
+  check("there is no separate code table", /var KEYCODE=/.test(src), false);
   check("dispatch knows the POW key", /case "POW":/.test(src), true);
 }
 {
   /* drive the real keydown listener so the mapping is exercised end to end */
   const {calc,keydown}=bootWithKeyboard();
-  ["2","^","3"].forEach(k=>keydown(k));
+  keydown("2"); keydown("^"); keydown("3");
   calc.dispatch("EQUALS");
   check("^ types a power and it evaluates", calc.evalExpr(), 8);
+}
+{
+  /* the physical Shift key must not do anything by itself */
+  const {calc,keydown}=bootWithKeyboard();
+  keydown("Shift",{code:"ShiftLeft"});
+  check("pressing Shift alone is ignored", calc.S.shift, false);
+  check("pressing Shift alone types nothing",
+    JSON.stringify(calc.getExpr().map(n=>n.v||n.t)), "[]");
+}
+{
+  /* the sticky SHIFT key still drives the shifted functions */
+  const {calc,keydown}=bootWithKeyboard();
+  keydown("2"); keydown("s");
+  check("s arms SHIFT", calc.S.shift, true);
+  /* `s` arms SHIFT, and SHIFT+"x^" is the n-th root template, so a bare "^"
+     after "s" reaches the ROOT template (the power comes from "^" alone).
+     A template lands beside its base in the expression, so look for it there
+     rather than assuming it is the first token. */
+  const kinds=(c)=>c.getExpr().map(n=>n.t);
+  keydown("^");
+  check("s then ^ reaches the shifted (n-th root) template",
+    kinds(calc).indexOf("root")>=0, true);
+
+  /* without SHIFT, "^" is the power template, and it absorbs the base */
+  const p2=bootWithKeyboard();
+  p2.keydown("2"); p2.keydown("^");
+  check("^ alone reaches the power template",
+    kinds(p2.calc).indexOf("pow")>=0, true);
+  check("...and absorbs the 2 as its base",
+    p2.calc.getExpr().filter(n=>n.t==="pow")[0].base.map(n=>n.v).join(""), "2");
+}
+{
+  /* digits/operators still work through the character table */
+  const {calc,keydown}=bootWithKeyboard();
+  ["1","2",",","3"].forEach(k=>keydown(k));
+  check("digits and a comma (decimal point) type through", calc.getExpr().map(n=>n.v).join(""), "12.3");
+}
+{
+  /* keys typed mid-composition belong to the IME, not the calculator */
+  const {calc,keydown}=bootWithKeyboard();
+  keydown("m",{code:"KeyM",isComposing:true});
+  check("a composing key is ignored", calc.S.menu, null);
+  keydown("m",{code:"KeyM",keyCode:229});
+  check("keyCode 229 (IME) is ignored", calc.S.menu, null);
+  keydown("m",{code:"KeyM"});
+  check("a plain key still works", calc.S.menu?calc.S.menu.type:null, "MAIN");
 }
 
 console.log("\n--- item 4: the \"/\" key is a fraction, not a division ---");
@@ -357,12 +410,26 @@ console.log("\n--- exponent rendering and DEL ---");
   const src=fs.readFileSync(path.join(__dirname,"..","ds991.html"),"utf8");
   /* the exponent is raised with a relative offset, NOT vertical-align: the
      surrounding .math boxes are inline-flex, so vertical-align is ignored on
-     their children (it used to leave the exponent centred on the right) */
-  check("exponent uses an offset, not vertical-align",
-    /\.sup\{[^}]*position:relative[^}]*top:-/.test(src), true);
-  check("exponent is smaller than the base", /\.sup\{[^}]*font-size:\.7em/.test(src), true);
-  check("nested exponents reset to the same size",
-    /\.sup \.sup\{font-size:1em;\}/.test(src), true);
+     their children (it used to leave the exponent centred on the right).
+     Every exponent renders at ONE size whatever its depth - spec section 7:
+     only the position moves up and to the right. */
+  /* the lift is emitted per level by renderExponent (spec step 6: no constant
+     `top` in the CSS, and no `.sup .sup` nesting rule either) */
+  /* the lift is a CONSTANT step, not depth*step: a .sup sits inside its parent
+     .sup, so the offsets already accumulate and multiplying by the depth made
+     the gaps grow (13.6 / 18.3 / 22.8 px instead of an even step) */
+  check("the exponent lift is computed by the renderer",
+    /function expStyle/.test(src) && /ctx\.rootFont\*EXP_STEP_EM/.test(src), true);
+  check("the lift is one constant step, not scaled by depth",
+    /EXP_STEP_EM\*\(ctx\.powerDepth/.test(src), false);
+  check("nothing animates the expression offset",
+    /\.exprline\{[^}]*transition/.test(src), false);
+  check("the exponent size is decided by the renderer",
+    /function expCtx/.test(src) && /fontMode:"EXPONENT"/.test(src), true);
+  check("no constant top offset in the .sup rule",
+    /\.sup\{[^}]*position:relative;\}/.test(src), true);
+  check("no CSS nesting hack for the exponent size", /\.sup \.sup/.test(src), false);
+  check("no depth-scaled exponent font", /power-depth-/.test(src), false);
 }
 {
   /* the exponent box must go when DEL is pressed with an empty exponent */
@@ -385,6 +452,157 @@ console.log("\n--- exponent rendering and DEL ---");
   ["2","POW","3","4","DEL","DEL","DEL"].forEach(k=>c.calc.dispatch(k));
   check("multi-digit exponent: digits first, then the wrapper",
     JSON.stringify(c.calc.getExpr().map(n=>n.t)), '["num"]');
+}
+
+console.log("\n--- power keys: the four contexts of the spec ---");
+{
+  const shape=(c)=>{ const f=(n)=>{ if(!n) return "?"; const a=x=>"["+x.map(f).join("")+"]";
+      if(n.t==="num") return n.v; if(n.t==="pow") return "("+a(n.base)+"^"+a(n.exp)+")";
+      if(n.t==="paren") return "("+a(n.body)+")"; return n.t; };
+    return c.getExpr().map(f).join(""); };
+  const run=(keys)=>{ const c=boot().calc; keys.forEach(k=>c.dispatch(k)); return c; };
+  const val=(keys)=>{ const c=run(keys); try{ return c.evalExpr(); }catch(e){ return "Syntax ERROR"; } };
+  const SRC=fs.readFileSync(path.join(__dirname,"..","ds991.html"),"utf8");
+
+  /* --- basics ------------------------------------------------------------- */
+  check("2 x^2 = 4", val(["2","SQR"]), 4);
+  check("2 x^3 = 8", val(["2","SHIFT","SQR"]), 8);
+  check("2 x^() opens an exponent", shape(run(["2","POW"])), "([2]^[])");
+  check("(1+1) x^2 = 4 (manual p.14)", val(["LPAREN","1","ADD","1","RPAREN","SQR"]), 4);
+  check("2 x^2 + 3 x^2 = 13", val(["2","SQR","ADD","3","SQR"]), 13);
+
+  /* --- A: outside a power, at its trailing edge -> every key ignored ------- */
+  for(const key of [["SQR"],["SHIFT","SQR"],["POW"]]){
+    const c=run(["2","POW","4","RIGHT"]);      /* leave the exponent: 2^4| */
+    check("A: caret is outside the power", c.getCursor().slot, null);
+    const before=shape(c);
+    key.forEach(k=>c.dispatch(k));
+    check("A: "+key.join("+")+" ignored right of a power", shape(c), before);
+  }
+  /* a parenthesised power is NOT a power context: NORMAL applies */
+  check("A/paren: (2^4)| + x^3 -> (2^4)^3",
+    shape(run(["LPAREN","2","POW","4","RPAREN","SHIFT","SQR"])), "([([([2]^[4])])]^[3])");
+
+  /* --- B: at the END of an exponent --------------------------------------- */
+  /* 2^(4|) + x^3 raises what is inside that exponent */
+  check("B: 2^(4|) + x^2", shape(run(["2","POW","4","SQR"])), "([2]^[([4]^[2])])");
+  check("B: 2^(4|) + x^3", shape(run(["2","POW","4","SHIFT","SQR"])), "([2]^[([4]^[3])])");
+  check("B: 2^(4|) + x^() leaves a square",
+    shape(run(["2","POW","4","POW"])), "([2]^[([4]^[])])");
+  check("B: ...and the caret enters that square", run(["2","POW","4","POW"]).getCursor().slot, "exp");
+
+  /* --- C: between a base and its exponent (2|^4) -------------------------- */
+  const CB=["2","POW","4","LEFT","LEFT"];          /* caret at base@1 = "2|^4" */
+  check("C: caret sits at the base/exponent boundary",
+    (()=>{ const c=run(CB); return c.getCursor().slot+"@"+c.getCursor().pos; })(), "base@1");
+  for(const key of [["SQR"],["SHIFT","SQR"]]){
+    const c=run(CB);
+    const before=shape(c);
+    key.forEach(k=>c.dispatch(k));
+    check("C: "+key.join("+")+" ignored between base and exponent", shape(c), before);
+  }
+  check("C: x^() gives 2^(square^4)",
+    shape(run(CB.concat(["POW"]))), "([2]^[([]^[4])])");
+  check("C: the caret enters that square", run(CB.concat(["POW"])).getCursor().slot, "base");
+  check("C: typing then fills it",
+    shape(run(CB.concat(["POW","5"]))), "([2]^[([5]^[4])])");
+
+  /* --- D: inside a number ------------------------------------------------ */
+  /* the number is cut at the caret: left -> base, right -> exponent/stays */
+  check("D: 2^(3|4) + x^2", shape(run(["2","POW","3","4","LEFT","SQR"])), "([2]^[([3]^[2])4])");
+  check("D: 2^(3|4) + x^3", shape(run(["2","POW","3","4","LEFT","SHIFT","SQR"])), "([2]^[([3]^[3])4])");
+  check("D: 2^(3|4) + x^() puts the right part in the exponent",
+    shape(run(["2","POW","3","4","LEFT","POW"])), "([2]^[([3]^[4])])");
+  check("D: multi-digit, cut at the caret offset",
+    shape(run(["2","POW","1","2","3","4","5","6","LEFT","LEFT","SQR"])),
+    "([2]^[([1234]^[2])56])");
+  /* NORMAL position: a number the caret sits inside is split too */
+  check("a caret inside a number raises only its left part",
+    shape(run(["1","2","LEFT","SQR"])), "([1]^[2])2");
+
+  /* --- DEL never reaches from an exponent into the base ------------------- */
+  check("DEL on an empty exponent drops the box, keeps the base",
+    shape(run(["2","5","POW","DEL"])), "25");
+  check("...and the next DEL then erases the base",
+    shape(run(["2","5","POW","DEL","DEL"])), "2");
+  check("DEL inside an exponent erases its own digit",
+    shape(run(["2","POW","3","DEL"])), "([2]^[])");
+  check("...then drops the box",
+    shape(run(["2","POW","3","DEL","DEL"])), "2");
+  /* DEL at the base/exponent boundary acts on the EXPONENT, never the base:
+     it erases the exponent's last digit, and only then does the next DEL reach
+     the base */
+  check("DEL at the base/exponent boundary erases the exponent",
+    shape(run(["2","POW","4","LEFT","DEL"])), "24");
+  /* the next DEL drops the now-empty box, leaving "2" beside the merged "4" */
+  /* 2^4 with the caret at the exponent's start merges to "24", caret just
+     right of the base's last token (2); the next DEL erases at that spot */
+  check("...and the next DEL erases the merged digit to its left",
+    shape(run(["2","POW","4","LEFT","DEL","DEL"])), "4");
+  /* the bug was that DEL ate the base's last digit ("123^" -> "12"): the base
+     must come through completely intact */
+  check("a multi-digit base is untouched by DEL on an empty exponent",
+    shape(run(["1","2","3","POW","DEL"])), "123");
+
+  /* DEL from the base's right edge with an exponent present acts on the
+     exponent, not the base */
+  check("DEL at the base's right edge erases the exponent's last digit",
+    shape(run(["2","POW","4","3","LEFT","LEFT","DEL"])), "243");
+  check("...and the next DEL erases the digit left of that spot",
+    shape(run(["2","POW","4","3","LEFT","LEFT","DEL","DEL"])), "43");
+  check("a multi-digit base is never touched from the exponent side",
+    shape(run(["2","5","POW","LEFT","DEL"])), "([25]^[])");
+
+  /* --- an empty exponent box does not swallow the caret ------------------- */
+  check("LEFT from an empty exponent leaves the power",
+    (function(){ const c=run(["2","POW","LEFT"]); return c.getCursor().depth; })(), 1);
+  check("LEFT from an empty exponent lands just before the power",
+    (function(){ const c=run(["2","POW","LEFT"]); return String(c.getCursor().slot)+"@"+c.getCursor().pos; })(),
+    "null@0");
+  check("RIGHT then steps back into the base, not the empty box",
+    (function(){ const c=run(["2","POW","LEFT","RIGHT"]); return c.getCursor().slot+"@"+c.getCursor().pos; })(),
+    "base@1");
+
+  /* --- DEL at the START of an exponent box: drop that level --------------- */
+  /* the bracket goes away and its contents are appended to the base */
+  /* Walk LEFT until the caret sits at offset 0 of the OUTERMOST exponent box
+     (the shallowest exponent frame - an expression can nest several). */
+  const atExpStart=(keys)=>{
+    const c=run(keys);
+    /* keep walking LEFT while the caret is inside a nested exponent, then stop
+       at the first exponent frame of the outermost power */
+    for(let i=0;i<14;i++){
+      const g=c.getCursor();
+      if(g.slot==="exp" && g.pos===0 && g.depth<=2) break;
+      c.dispatch("LEFT");
+    }
+    c.dispatch("DEL");
+    return c;
+  };
+  check("123^(|456) + DEL -> 123456",
+    shape(atExpStart(["1","2","3","POW","4","5","6"])), "123456");
+  check("123^(|) + DEL -> 123",
+    shape(atExpStart(["1","2","3","POW"])), "123");
+  /* 123^(45^67): the exponent holds the power 45^67, which lands after the base */
+  check("123^(|45^67) + DEL -> 12345^67",
+    shape(atExpStart(["1","2","3","POW","4","5","POW","6","7"])), "123([45]^[67])");
+  /* 123^(^45): the exponent is an empty base raised to 45, so the base becomes
+     empty and 45 stays as this power's exponent -> 123^45 */
+  /* 123^(^45): the exponent holds the power []^45, a level with nothing on its
+     own base side, so DEL LIFTS that exponent one level down - the inner 45
+     becomes 123's exponent */
+  check("123^(|^45) + DEL -> 123^45",
+    shape(atExpStart(["1","2","3","POW","POW","4","5"])), "([123]^[45])");
+  /* nothing typed is ever lost by the merge */
+  /* nothing typed is lost: the merged "123456" is one number again */
+  check("the merged content is one number",
+    shape(atExpStart(["1","2","3","POW","4","5","6"])), "123456");
+
+  /* --- renderer: one exponent size, position only ------------------------- */
+  check("exponent lift comes from the render context",
+    /expStyle\(expCtx\(ctx\)\)/.test(SRC), true);
+  check("every exponent renders at one size",
+    /\.sup\{[^}]*font-size:\.70em/.test(SRC), true);
 }
 
 console.log("\n--- item 5: log-base placeholder boxes ---");
