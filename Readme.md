@@ -71,7 +71,7 @@ is introduced by a `/* ==== SECTION ==== */` banner with a short explanation:
 | KEY LAYOUT / BUILD KEYPAD | the keyboard as data, and turning it into buttons |
 | DISPLAY HELPERS | expression tree → LCD HTML, caret and slot boxes |
 | NUMBER FORMAT | NORM/FIX/SCI, engineering, exact fractions |
-| EDITING | caret model, movement (`doLeft/doRight/doField`), deletion, `input*()` |
+| EDITING | caret model, movement (`moveLeft/moveRight/moveUp/moveDown`), deletion, `input*()` |
 | EVALUATOR | tree → value; real and complex share one path |
 | MENUS / SETTINGS / MODES | menu state machine and the calculation modes |
 | BASE-N / MATRIX / VECTOR / STATISTICS | the mode-specific maths |

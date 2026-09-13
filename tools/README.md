@@ -13,6 +13,7 @@ next to the page) copies it to `index.html` for GitHub Pages.
 | `cursor_test.js` | per-digit LEFT/RIGHT, UP/DOWN slot offsets, DEL, fraction order |
 | `fraction_test.js` | fraction templates, absorbing a preceding number, evaluation |
 | `dpad_test.js` | UP/DOWN across every template type, caret never stranded |
+| `power_test.js` | exponent matrix: input I1-I11, delete D1-D11, navigation N1-N6, eval/serialization |
 | `regression_test.js` | every calculation mode plus editing, memory and history |
 | `ui_test.js` | caret/answer display, key layout, shortcuts, integral and log markup |
 | `run_tests.js` | runs all of the above; exits non-zero on any failure |

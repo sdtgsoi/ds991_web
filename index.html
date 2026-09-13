@@ -1082,9 +1082,10 @@ function formatComplex(z){
      - measurement : digitsIn / arrDigits / slotDigits
      - conversion  : tokenAtPos / offsetInToken / tokenAt / insertIndex /
                      leftToken / tokenAtTrailingEdge / splitNumberAt
-     - movement    : doLeft / doRight / doField (UP/DOWN) / leaveField /
-                     descendAtCursor
-     - deletion    : delDigitIn / doDel
+     - movement    : CURSOR NAVIGATOR - moveLeft / moveRight / moveUp /
+                     moveDown (moveField is the shared UP/DOWN body) /
+                     leaveField / descendAtCursor
+     - deletion    : DELETE CONTROLLER - doDel() dispatches to delete* strategies
      - insertion   : ins and the input*() family, one per key
    The input*() helpers never splice directly; they build a token, insert it at
    the caret (ins) and then `enter()` the slot the user should type into next. */
@@ -1485,7 +1486,7 @@ function takeTrailingNumber(){
   return num;
 }
 /* leave the template the cursor is inside, landing just before/after the
-   template node in its parent frame. Unlike doLeft()/doRight() this always
+   template node in its parent frame. Unlike moveLeft()/moveRight() this always
    leaves, so an empty slot cannot swallow the caret. */
 function leaveField(dir){
   var f=stack.pop(), p=cur(), idx=p.arr.indexOf(f.node);
@@ -1585,8 +1586,15 @@ function descendAtCursor(){
     stack.push({arr:slotArr, pos:rel, node:n, slot:slot});
   }
 }
-/* ---- 4. movement ---- */
-function doLeft(){
+/* ---- 4. movement: the Cursor Navigator ---------------------------------------
+   LEFT / RIGHT / UP / DOWN are the only four entry points that move the caret;
+   dispatch() calls moveLeft / moveRight / moveUp / moveDown and nothing else.
+   The power cases below are the movement side of the boundary model described
+   under POWER KEYS / PowerContext: a power's base end, the "^" offset and the
+   exponent start are three coordinates of one screen position, and Phase 4 of
+   the v3 plan is what unifies them. Until then those cases are load-bearing and
+   stay as they are. moveField() is the shared UP/DOWN body. */
+function moveLeft(){
   var c=cur();
   if(afterAnswer){
     /* first LEFT after an answer: land on the far right */
@@ -1662,7 +1670,7 @@ function doLeft(){
     leaveField(-1);
   }
 }
-function doRight(){
+function moveRight(){
   var c=cur();
   var total=arrDigits(c.arr);
   /* an EMPTY exponent box is crossed, not stopped in (see emptyExpRect); the
@@ -1687,7 +1695,7 @@ function doRight(){
     afterAnswer=false;
     return;
   }
-  /* stepping right past the very end lands on the very start (see doLeft) */
+  /* stepping right past the very end lands on the very start (see moveLeft) */
   if(stack.length<=1 && total>0 && c.pos>=total){
     stack[0].pos=0;
     return;
@@ -1910,108 +1918,145 @@ function delIntoPreviousSlot(node,fromSlot,order){
   }
   return false;
 }
+/* ============================ DELETE CONTROLLER ============================ */
+/* doDel() used to inline every deletion strategy, which is why the power rules
+ * had to be re-derived here on top of the input and navigation copies. It is
+ * now only a dispatcher; each strategy keeps its original body (moved verbatim,
+ * with no "while we are here" edits) and the longest comment block moved with
+ * it.
+ *
+ *   deletePower()          a power: D1-D8 of the v3 matrix
+ *   deleteIntegral()       an integral: cross-slot backtrack + unwrap
+ *   deleteNumber()         one digit left of the caret
+ *   deleteTemplateEdge()   caret just right of a template: step back inside
+ *   deleteIntoPrevSlot()   caret at a slot head: eat the previous slot's tail
+ *   deleteEnclosingNode()  otherwise: drop the node/template the caret is in
+ *   delDigitIn()           the shared primitive: one digit left of the caret
+ */
 function doDel(){
   var c=cur();
-  /* --- integral rules -------------------------------------------------------
-     The caret walks the integral as integrand -> lower -> upper. DEL follows
-     that walk:
-
-       * in the middle of a region it just erases one digit to the left;
-       * at the left edge of a later region it erases the last digit of the
-         previous region instead (so DEL at the start of the lower bound eats
-         the end of the integrand);
-       * at the left edge of the FIRST region, i.e. the left edge of the whole
-         template, the integral itself is removed - and, because the integrand
-         may still hold something, its contents are left behind in the parent
-         expression rather than being thrown away.
-
-     "Empty" uses arrDigits(), not slotDigits(): slotDigits() forces a minimum
-     of one so empty slots stay reachable by the caret, which would make every
-     slot look non-empty here. */
-  /* --- power rules ----------------------------------------------------------
-     The exponent box is walked in reading order (base, then exponent) and DEL
-     never reaches from the exponent into the base as if the "^" were not there.
-
-       * caret at the START of the exponent box: the whole bracket is removed and
-         its contents are appended to the base, which is what "drop this level"
-         means visually:
-             123^(|456)   -> 123456
-             123^(|)      -> 123
-             123^(|45^67) -> 12345^67
-             123^(|^45)   -> 123^45
-       * elsewhere inside the exponent: erase one digit of the exponent;
-       * at the base's right edge: act on the exponent box (remove it when empty,
-         otherwise erase its last digit). */
-  var powCtx=null, powInExp=false;
-  if(c.node && c.node.t==="pow" && c.slot==="exp"){ powCtx=c.node; powInExp=true; }
-  else if(c.node && c.node.t==="pow" && c.slot==="base"){
-    /* the base's right edge opens onto the exponent box - including an EMPTY
-       one, the case that used to fall through and eat the base's last digit */
-    if(c.pos>=arrDigits(c.node.base)){ powCtx=c.node; powInExp=false; }
-  }
-  if(powCtx){
-    if(powInExp && c.pos<=0){ mergeExponentIntoBase(powCtx); return; }
-    if(powInExp){
-      var npw=delDigitIn(c.arr,c.pos);
-      if(npw>=0) c.pos=npw;
-      return;
-    }
-    var hasExp=arrDigits(powCtx.exp)>0;
-    if(!hasExp){ detachExponent(powCtx); return; }
-    /* from the base side the caret acts at the END of the exponent, next to the
-       "^"; the exponent frame may already exist parked at offset 0 */
-    var ef=null;
-    for(var pd=stack.length-1;pd>0;pd--){
-      if(stack[pd].node===powCtx && stack[pd].slot==="exp"){ ef=stack[pd]; break; }
-    }
-    if(!ef){ ef={arr:powCtx.exp,pos:0,node:powCtx,slot:"exp"}; stack.push(ef); }
-    ef.pos=arrDigits(powCtx.exp);
-    var enp=delDigitIn(ef.arr,ef.pos);
-    if(enp>=0) ef.pos=enp;
-    return;
-  }
-  var intNode=(c.node && c.node.t==="intg" && (c.slot==="body"||c.slot==="lower"||c.slot==="upper")) ? c.node : null;
-  /* At offset 0 the caret sits BEFORE the node's first character, so tokenAt()
-     cannot see it; the enclosing template is still known from the frame. */
-  if(!intNode){
-    for(var d=stack.length-1;d>0;d--){
-      var fr=stack[d];
-      if(fr.pos<=0 && fr.node && fr.node.t==="intg"){ intNode=fr.node; c=fr; break; }
-    }
-  }
-  if(intNode){
-    if(c.pos>0){
-      var np0=delDigitIn(c.arr,c.pos);
-      if(np0>=0) c.pos=np0;
-      return;
-    }
-    /* at the left edge of this region: walk backwards through the PRINTED
-       order, or drop the template when nothing is left of it. The caret path is
-       always [node, slot] at this point (tokenAt found the node, or the frame
-       loop below did), so popping one frame rewinds into the node's parent. */
-    if(delIntoPreviousSlot(intNode,c.slot)) return;
-    detachIntegral(intNode);
-    return;
-  }
+  var pt=powerDeleteTarget(c);
+  if(pt){ deletePower(c,pt); return; }
+  var it=integralDeleteTarget(c);
+  if(it){ deleteIntegral(it); return; }
   if(c.pos>0){
-    /* caret sitting just right of a template: step back inside it and delete
-       its last digit, so "⌐12/34 |" + DEL leaves 12/3 instead of dropping the
-       whole fraction */
-    var edge=tokenAtTrailingEdge(c.arr,c.pos);
-    var ek=edge?lastSlot(edge):null;
-    if(ek){
-      enterEnd(edge,ek);
-      var ef=cur(), nep=delDigitIn(ef.arr,ef.pos);
-      if(nep>=0) ef.pos=nep; else leaveField(1);
-      return;
-    }
-    var np=delDigitIn(c.arr,c.pos);
-    if(np>=0) c.pos=np;
+    if(deleteTemplateEdge(c)) return;
+    deleteNumber(c);
     return;
   }
   if(stack.length<=1) return;
-  /* at the head of a template slot: step back into the previous slot and
-     delete its last digit, instead of dropping the whole template */
+  if(deleteIntoPrevSlot()) return;
+  deleteEnclosingNode();
+}
+/* The power whose delete rules apply at the caret, or null. `inExp` records
+   whether the caret is in that power's exponent slot. Two ways in: the caret is
+   inside the exponent, or it sits at the right edge of the base - including an
+   EMPTY exponent box, the case that used to fall through and eat the base's
+   last digit. */
+function powerDeleteTarget(c){
+  if(c.node && c.node.t==="pow" && c.slot==="exp") return {node:c.node,inExp:true};
+  if(c.node && c.node.t==="pow" && c.slot==="base" && c.pos>=arrDigits(c.node.base)) return {node:c.node,inExp:false};
+  return null;
+}
+/* --- power rules ------------------------------------------------------------
+   The exponent box is walked in reading order (base, then exponent) and DEL
+   never reaches from the exponent into the base as if the "^" were not there.
+
+     * caret at the START of the exponent box: the whole bracket is removed and
+       its contents are appended to the base, which is what "drop this level"
+       means visually:
+           123^(|456)   -> 123456
+           123^(|)      -> 123
+           123^(|45^67) -> 12345^67
+           123^(|^45)   -> 123^45
+     * elsewhere inside the exponent: erase one digit of the exponent;
+     * at the base's right edge: act on the exponent box (remove it when empty,
+       otherwise erase its last digit). */
+function deletePower(c,tgt){
+  var powCtx=tgt.node, powInExp=tgt.inExp;
+  if(powInExp && c.pos<=0){ mergeExponentIntoBase(powCtx); return; }
+  if(powInExp){
+    var npw=delDigitIn(c.arr,c.pos);
+    if(npw>=0) c.pos=npw;
+    return;
+  }
+  var hasExp=arrDigits(powCtx.exp)>0;
+  if(!hasExp){ detachExponent(powCtx); return; }
+  /* from the base side the caret acts at the END of the exponent, next to the
+     "^"; the exponent frame may already exist parked at offset 0 */
+  var ef=null;
+  for(var pd=stack.length-1;pd>0;pd--){
+    if(stack[pd].node===powCtx && stack[pd].slot==="exp"){ ef=stack[pd]; break; }
+  }
+  if(!ef){ ef={arr:powCtx.exp,pos:0,node:powCtx,slot:"exp"}; stack.push(ef); }
+  ef.pos=arrDigits(powCtx.exp);
+  var enp=delDigitIn(ef.arr,ef.pos);
+  if(enp>=0) ef.pos=enp;
+}
+/* The integral whose rules apply at the caret, together with the frame to act
+   on, or null. At offset 0 the caret sits BEFORE the node's first character, so
+   tokenAt() cannot see it; the enclosing template is still known from the
+   frame. */
+function integralDeleteTarget(c){
+  if(c.node && c.node.t==="intg" && (c.slot==="body"||c.slot==="lower"||c.slot==="upper")) return {node:c.node,frame:c};
+  for(var d=stack.length-1;d>0;d--){
+    var fr=stack[d];
+    if(fr.pos<=0 && fr.node && fr.node.t==="intg") return {node:fr.node,frame:fr};
+  }
+  return null;
+}
+/* --- integral rules ---------------------------------------------------------
+   The caret walks the integral as integrand -> lower -> upper. DEL follows that
+   walk:
+
+     * in the middle of a region it just erases one digit to the left;
+     * at the left edge of a later region it erases the last digit of the
+       previous region instead (so DEL at the start of the lower bound eats the
+       end of the integrand);
+     * at the left edge of the FIRST region, i.e. the left edge of the whole
+       template, the integral itself is removed - and, because the integrand may
+       still hold something, its contents are left behind in the parent
+       expression rather than being thrown away.
+
+   "Empty" uses arrDigits(), not slotDigits(): slotDigits() forces a minimum of
+   one so empty slots stay reachable by the caret, which would make every slot
+   look non-empty here. */
+function deleteIntegral(tgt){
+  var intNode=tgt.node, c=tgt.frame;
+  if(c.pos>0){
+    var np0=delDigitIn(c.arr,c.pos);
+    if(np0>=0) c.pos=np0;
+    return;
+  }
+  /* at the left edge of this region: walk backwards through the PRINTED order,
+     or drop the template when nothing is left of it. The caret path is always
+     [node, slot] at this point (tokenAt found the node, or the frame loop did),
+     so popping one frame rewinds into the node's parent. */
+  if(delIntoPreviousSlot(intNode,c.slot)) return;
+  detachIntegral(intNode);
+}
+/* one digit immediately left of the caret */
+function deleteNumber(c){
+  var np=delDigitIn(c.arr,c.pos);
+  if(np>=0) c.pos=np;
+}
+/* caret sitting just right of a template: step back inside it and delete its
+   last digit, so "⌐12/34 |" + DEL leaves 12/3 instead of dropping the whole
+   fraction. Returns false when the token at the trailing edge is not a
+   template. */
+function deleteTemplateEdge(c){
+  var edge=tokenAtTrailingEdge(c.arr,c.pos);
+  var ek=edge?lastSlot(edge):null;
+  if(!ek) return false;
+  enterEnd(edge,ek);
+  var f=cur(), nep=delDigitIn(f.arr,f.pos);
+  if(nep>=0) f.pos=nep; else leaveField(1);
+  return true;
+}
+/* at the head of a template slot: step back into the previous slot and delete
+   its last digit, instead of dropping the whole template. Returns false when
+   there is no such slot. */
+function deleteIntoPrevSlot(){
   for(var i=stack.length-1;i>0;i--){
     var keys=slotKeys(stack[i].node);
     var ki=keys?keys.indexOf(stack[i].slot):-1;
@@ -2021,8 +2066,12 @@ function doDel(){
     enterEnd(tnode,keys[ki-1]);
     var f=cur();
     if(f.pos>0){ var np2=delDigitIn(f.arr,f.pos); if(np2>=0) f.pos=np2; }
-    return;
+    return true;
   }
+  return false;
+}
+/* otherwise drop the node/template the caret is inside */
+function deleteEnclosingNode(){
   var ff=stack.pop(), p=cur();
   var idx=p.arr.indexOf(ff.node);
   if(idx>=0){ p.arr.splice(idx,1); p.pos=tokenStart(p.arr,idx); }
@@ -2033,7 +2082,7 @@ function doDel(){
    after the first digit of the denominator too. At either end of the slot list
    they step out of the template; false means "no enclosing template" so the
    caller can fall back to history recall. */
-function doField(dir){
+function moveField(dir){
   var c=cur(), keys=slotKeys(c.node);
   var i=keys?keys.indexOf(c.slot):-1;
   if(i>=0){
@@ -2082,6 +2131,9 @@ function doField(dir){
   }
   return false;
 }
+/* the two vertical entry points of the Cursor Navigator interface */
+function moveUp(){ return moveField(-1); }
+function moveDown(){ return moveField(1); }
 function doAC(){
   clearInput();
 }
@@ -3540,10 +3592,10 @@ function dispatch(id){
       clearAfterAnswer();
       if(shifted){ toggleExact(); return; }
       doEquals(); return;
-    case "LEFT": leaveResultView(); doLeft(); render(); return;
-    case "RIGHT": leaveResultView(); doRight(); render(); return;
-    case "UP": leaveResultView(); if(!doField(-1)) historyUp(); else render(); return;
-    case "DOWN": leaveResultView(); if(!doField(1)) historyDown(); else render(); return;
+    case "LEFT": leaveResultView(); moveLeft(); render(); return;
+    case "RIGHT": leaveResultView(); moveRight(); render(); return;
+    case "UP": leaveResultView(); if(!moveUp()) historyUp(); else render(); return;
+    case "DOWN": leaveResultView(); if(!moveDown()) historyDown(); else render(); return;
     case "OK": doEquals(); return;
   }
 
