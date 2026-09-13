@@ -556,14 +556,17 @@ console.log("\n--- power keys: the four contexts of the spec ---");
     shape(run(["2","5","POW","LEFT","DEL"])), "([25]^[])");
 
   /* --- an empty exponent box does not swallow the caret ------------------- */
-  check("LEFT from an empty exponent leaves the power",
-    (function(){ const c=run(["2","POW","LEFT"]); return c.getCursor().depth; })(), 1);
-  check("LEFT from an empty exponent lands just before the power",
+  /* LEFT from the empty box steps out into the base start. The parent gap in
+     front of the power and base@0 are the same screen spot and are merged, so
+     the caret lands in the base (depth 2) rather than in a separate root gap. */
+  check("LEFT from an empty exponent steps out to the base start",
+    (function(){ const c=run(["2","POW","LEFT"]); return c.getCursor().depth; })(), 2);
+  check("...and lands at the base start",
     (function(){ const c=run(["2","POW","LEFT"]); return String(c.getCursor().slot)+"@"+c.getCursor().pos; })(),
-    "null@0");
-  check("RIGHT then steps back into the base, not the empty box",
-    (function(){ const c=run(["2","POW","LEFT","RIGHT"]); return c.getCursor().slot+"@"+c.getCursor().pos; })(),
     "base@0");
+  check("RIGHT then steps on to the base end, not the empty box",
+    (function(){ const c=run(["2","POW","LEFT","RIGHT"]); return c.getCursor().slot+"@"+c.getCursor().pos; })(),
+    "base@1");
 
   /* --- DEL at the START of an exponent box: drop that level --------------- */
   /* the bracket goes away and its contents are appended to the base */

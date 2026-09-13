@@ -1654,8 +1654,23 @@ function climbOutOfNestedEnds(){
     leaveField(1);
   }
 }
-function canonAfterLeft(){ canonLeadingBaseIntoExp(); canonDeepestExpEnd(); }
-function canonAfterRight(){ /* base@end stays a stop: RIGHT walks base -> exponent */ }
+/* The parent gap immediately in FRONT of a power renders at the same spot as
+   that power's base@0 (before its first digit). Merge the two so navigation has
+   one stop there: coming from the left, RIGHT steps into the base instead of
+   resting on the gap; leaving the base, LEFT skips the gap in the same press
+   (see moveLeftRaw). */
+function canonGapBeforePower(){
+  var c=cur();
+  if(!c || !c.arr) return;
+  var i=insertIndex(c.arr,c.pos);
+  if(i<0 || i>=c.arr.length) return;
+  var n=c.arr[i];
+  if(!n || n.t!=="pow" || arrDigits(n.base)<=0) return;
+  if(c.pos!==tokenStart(c.arr,i)) return;
+  stack.push({arr:n.base,pos:0,node:n,slot:"base"});
+}
+function canonAfterLeft(){ canonGapBeforePower(); canonLeadingBaseIntoExp(); canonDeepestExpEnd(); }
+function canonAfterRight(){ canonGapBeforePower(); canonLeadingBaseIntoExp(); }
 function moveLeft(){ moveLeftRaw(); canonAfterLeft(); }
 function moveRight(){ moveRightRaw(); canonAfterRight(); }
 function moveLeftRaw(){
@@ -1717,7 +1732,16 @@ function moveLeftRaw(){
     /* leaving an inner base: its left neighbour is the outer exponent's entry
        point, which normalisation pushes straight back in, so aim at the outer
        base instead */
-    if(f.slot==="base" && c.pos<=0 && stack.length>2){ leaveField(-1); return; }
+    if(f.slot==="base" && c.pos<=0){
+      if(stack.length>2){ leaveField(-1); return; }   /* nested: into the enclosing exponent */
+      /* OUTERMOST base start: leaveField() lands on the parent gap in front of
+         the power, which renders at the same spot and is merged into base@0 by
+         canonGapBeforePower(). Step once more so LEFT really leaves the power -
+         "1+|12^34" then goes straight to "1|+12^34" instead of stopping twice. */
+      leaveField(-1);
+      moveLeftRaw();
+      return;
+    }
     var keys=slotKeys(f.node);
     if(keys){
       var ki=keys.indexOf(f.slot);

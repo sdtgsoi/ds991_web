@@ -179,7 +179,7 @@ console.log("\n--- N1: LEFT/RIGHT cycles (Phase 4) ---");
     }
     return n+1;
   };
-  const cases=[["2 POW 3",6,6],["2 POW 3 POW 4",8,8],["2 POW 3 POW 4 POW 5",10,10]];
+  const cases=[["2 POW 3",5,5],["2 POW 3 POW 4",7,7],["2 POW 3 POW 4 POW 5",9,9]];
   for(const [keys,wl,wr] of cases){
     const gl=cycle(keys,"LEFT"), gr=cycle(keys,"RIGHT");
     const ok=gl===wl&&gr===wr&&gl===gr;
