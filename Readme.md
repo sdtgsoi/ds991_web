@@ -71,7 +71,7 @@ is introduced by a `/* ==== SECTION ==== */` banner with a short explanation:
 | KEY LAYOUT / BUILD KEYPAD | the keyboard as data, and turning it into buttons |
 | DISPLAY HELPERS | expression tree → LCD HTML, caret and slot boxes |
 | NUMBER FORMAT | NORM/FIX/SCI, engineering, exact fractions |
-| EDITING | caret model, movement (`doLeft/doRight/doField`), deletion, `input*()` |
+| EDITING | caret model, movement (`moveLeft/moveRight/moveUp/moveDown`), deletion, `input*()` |
 | EVALUATOR | tree → value; real and complex share one path |
 | MENUS / SETTINGS / MODES | menu state machine and the calculation modes |
 | BASE-N / MATRIX / VECTOR / STATISTICS | the mode-specific maths |
@@ -84,6 +84,34 @@ is introduced by a `/* ==== SECTION ==== */` banner with a short explanation:
 The `pos` of a cursor frame is a **digit offset**, not a token index — a token
 such as `"12"` spans two caret positions. That is what makes LEFT/RIGHT move one
 digit and UP/DOWN line the numerator up with the denominator.
+
+### Exponents
+
+A power renders through a small layout context rather than plain CSS:
+
+```
+renderNode(node, ctx)          ctx = {powerDepth, fontMode, layoutMode, rootFont}
+   └── renderPow(node, ctx)
+         ├── base : ctx with fontMode NORMAL
+         └── renderExponent(exp, ctx)   fontMode EXPONENT, powerDepth + 1
+```
+
+`fontMode` is deliberately **not** inherited through an exponent: every level
+sets `EXPONENT` again, and the size is an absolute `rootFont * 0.70` px, so
+level 2, 3, 4 … are all the same size. Only `powerDepth` grows, and that is what
+drives the lift (`rootFont * 0.30 * depth` px) — one constant step per level.
+Sizing it in `em` would compound (70/49/34%) or shrink the step, which is what
+made deep towers unreadable.
+
+Two consequences worth remembering:
+
+* `.exprline` must stay `overflow:visible`. A relative offset does not grow the
+  line box, so `overflow:hidden` (the old value) clipped the upper levels of a
+  tower right off the screen.
+* the vertical position is handled by `ensureCursorVisible()`: it measures the
+  caret against the LCD and offsets the whole line, clamped by
+  `MAX_VERTICAL_SHIFT`, so the caret stays visible and a very deep expression
+  can never be pushed completely out of view.
 
 Keyboard shortcuts go through the same dispatcher as the on-screen keys, so a
 shortcut behaves exactly like pressing the key:
@@ -101,11 +129,22 @@ shortcut behaves exactly like pressing the key:
 | `Backspace` / `Delete` | DEL |
 | `Escape` | AC |
 | arrow keys | the d-pad |
+| **`Shift`** | **SHIFT** — the physical Shift key works too (left or right) |
 | `s` `a` | SHIFT / ALPHA (sticky, they arm the next key) |
 | `m` `o` `c` `x` `e` `r` | MENU, OPTN, CALC, `x`, ENG, S⇔D |
 
-Note that `s`/`a` arm SHIFT/ALPHA for the *next* key only, so `s` then `^`
-performs SHIFT+`x^`, which is the ⁿ√ template. Press `^` directly for a power.
+Note that `s`/`a` arm SHIFT/ALPHA for the *next* key only. Because the app's
+SHIFT and the keyboard's Shift are the same physical key, the shift state decides
+how a key is read: holding Shift makes the browser report the shifted character
+(`Shift`+`6` is `^`), and that character is taken as the intent, so `Shift`+`6`
+gives the **exponent**, while the sticky SHIFT still drives its own functions
+(`Shift`+`7` = constants, `Shift`+`^` = ⁿ√, and so on).
+
+Keys are matched first by **`event.code`** (physical position: `Digit6`, `KeyS`,
+`NumpadDivide`), so the shortcuts keep working under a Chinese/Japanese input
+method and on non-US layouts, and then by **`event.key`** (the produced
+character) for symbols such as `^`, `!` and `%`. Keys typed mid-composition are
+ignored, so an IME never leaks into the calculator.
 
 Regression suites (no dependencies, plain Node) — see `tools/README.md`:
 
