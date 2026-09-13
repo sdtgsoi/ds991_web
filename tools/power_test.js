@@ -128,9 +128,11 @@ t("D5  123^(|45^67) DEL -> 123|45^67","1 2 3 POW 4 5 POW 6 7 LEFT LEFT LEFT LEFT
 t("D6  123^(|^45) DEL -> 123|^45","1 2 3 POW POW 4 5 LEFT LEFT DEL",
   {line:"123|45",tree:"pow{[N123]^[N45]}"});
 t("D7  2^| (exp empty) DEL -> 2","RIGHT RIGHT DEL",{line:"2|",tree:"N2"},{pre:[P([NT(2)],[])]});
-/* D8: the base side of the boundary (base@end) keeps its own stop one press
-   left of the exponent side, and DEL there acts on the exponent, not the base. */
-t("D8  2^|3 (base side) DEL -> 2^box","2 POW 3 LEFT LEFT DEL",{line:"2|",tree:"pow{[N2]^[]}"});
+/* D8: the BASE side of the boundary (base@end) has its own stop one press left
+   of the exponent side. DEL there erases the base's last digit - the character
+   immediately left of the caret ("12|34" DEL -> "1^34"); it must not jump into
+   the exponent. */
+t("D8  2^|3 (base side) DEL erases the base digit","2 POW 3 LEFT LEFT DEL",{line:"|3",tree:"pow{[]^[N3]}"});
 t("D9  template right edge DEL","FRAC 1 2 DOWN 3 4 RIGHT DEL",{line:"(12)/(3|)",tree:"frac{[N12]/[N3]}"});
 t("D10 integral lower-slot start DEL","INTG XKEY DOWN DEL",{tree:"intg{lo[],up[],body[]}"});
 t("D11 integral integrand start DEL","INTG XKEY DEL DEL",{line:"|",tree:""});
@@ -144,13 +146,19 @@ t("D14 2^3^4^5 outside DEL -> 2^(3^(4^(box)))","2 POW 3 POW 4 POW 5 RIGHT DEL",
   {line:"234|",tree:"pow{[N2]^[pow{[N3]^[pow{[N4]^[]}]}]}"});
 t("D15 |2^3^4 DEL is a no-op at the start","2 POW 3 POW 4 LEFT LEFT LEFT LEFT LEFT DEL",
   {line:"|234",tree:"pow{[N2]^[pow{[N3]^[N4]}]}"});
-/* D16: DEL on the base side of an inner boundary stays inside the exponent -
-   it erases the exponent's last digit (same rule as D8), never the base. */
-t("D16 2^3|4 (base side) DEL erases the exponent","2 POW 3 POW 4 LEFT LEFT DEL",
-  {line:"23|",tree:"pow{[N2]^[pow{[N3]^[]}]}"});
+/* D16: same rule on an INNER boundary - DEL erases the inner base's last digit,
+   not a digit of the exponent. */
+t("D16 2^3|4 (base side) DEL erases the inner base digit","2 POW 3 POW 4 LEFT LEFT DEL",
+  {line:"2|4",tree:"pow{[N2]^[pow{[]^[N4]}]}"});
 /* D17: DEL on the exponent side of an inner boundary collapses that level. */
 t("D17 2^3^|4 (exp side) DEL collapses one level","2 POW 3 POW 4 LEFT DEL",
   {line:"23|4",tree:"pow{[N2]^[N3,N4]}"});
+/* D18/D19: the base side of a multi-digit base and of the outermost tower level
+   both erase the base's own last digit. */
+t("D18 12|34 DEL -> 1^34","1 2 POW 3 4 LEFT LEFT LEFT DEL",
+  {line:"1|34",tree:"pow{[N1]^[N34]}"});
+t("D19 2|3^4 DEL -> box^3^4","2 POW 3 POW 4 LEFT LEFT LEFT LEFT DEL",
+  {line:"|34",tree:"pow{[]^[pow{[N3]^[N4]}]}"});
 
 console.log("\n--- N. navigation (doc 3.3) ---");
 t("N2a empty exponent box: LEFT passes through","2 POW LEFT",{line:"|2\u2610",tree:"pow{[N2]^[]}"});

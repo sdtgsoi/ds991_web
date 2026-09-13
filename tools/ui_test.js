@@ -531,10 +531,11 @@ console.log("\n--- power keys: the four contexts of the spec ---");
     shape(run(["2","POW","3","DEL"])), "([2]^[])");
   check("...then drops the box",
     shape(run(["2","POW","3","DEL","DEL"])), "2");
-  /* DEL at the base/exponent boundary acts on the EXPONENT, never the base:
-     it erases the exponent's last digit, and only then does the next DEL reach
-     the base */
-  check("DEL at the base/exponent boundary erases the exponent",
+  /* The two sides of a boundary behave differently (and render differently):
+     on the EXPONENT side (exp@0) DEL collapses the level by merging the
+     exponent into the base; on the BASE side (base@end) it erases the base's
+     own last digit (see the base-side checks below). */
+  check("DEL on the exponent side collapses the level",
     shape(run(["2","POW","4","LEFT","DEL"])), "24");
   /* the next DEL drops the now-empty box, leaving "2" beside the merged "4" */
   /* 2^4 with the caret at the exponent's start merges to "24", caret just
@@ -546,13 +547,16 @@ console.log("\n--- power keys: the four contexts of the spec ---");
   check("a multi-digit base is untouched by DEL on an empty exponent",
     shape(run(["1","2","3","POW","DEL"])), "123");
 
-  /* DEL from the base's right edge with an exponent present acts on the
-     exponent, not the base */
-  check("DEL at the base's right edge erases the exponent's last digit",
+  /* On the exponent side a longer exponent is merged into the base too */
+  check("DEL on the exponent side merges the whole exponent",
     shape(run(["2","POW","4","3","LEFT","LEFT","DEL"])), "243");
   check("...and the next DEL erases the digit left of that spot",
     shape(run(["2","POW","4","3","LEFT","LEFT","DEL","DEL"])), "43");
-  check("a multi-digit base is never touched from the exponent side",
+  /* On the BASE side DEL erases the base's last digit and never a digit of the
+     exponent: "12|34" -> "1^34" (the reported bug erased the exponent's 4). */
+  check("DEL on the base side erases the base's last digit",
+    shape(run(["1","2","POW","3","4","LEFT","LEFT","LEFT","DEL"])), "([1]^[34])");
+  check("a multi-digit base is untouched from the exponent side",
     shape(run(["2","5","POW","LEFT","DEL"])), "([25]^[])");
 
   /* --- an empty exponent box does not swallow the caret ------------------- */

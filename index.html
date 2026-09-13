@@ -2150,8 +2150,19 @@ function deletePower(c,tgt){
   }
   var hasExp=arrDigits(powCtx.exp)>0;
   if(!hasExp){ detachExponent(powCtx); return; }
-  /* from the base side the caret acts at the END of the exponent, next to the
-     "^"; the exponent frame may already exist parked at offset 0 */
+  /* BASE side of the boundary (base@end): the character immediately left of the
+     caret is the base's LAST DIGIT, so DEL erases that. It must not reach into
+     the exponent - the reported bug was that DEL here jumped to the exponent's
+     end and erased a digit there ("12|34" DEL used to give "12^3"; it now gives
+     "1^34"). An EMPTY base has nothing to erase, so only then do we keep acting
+     on the exponent (the old rule). */
+  if(arrDigits(powCtx.base)>0){
+    var nb=delDigitIn(c.arr,c.pos);
+    if(nb>=0) c.pos=nb;
+    return;
+  }
+  /* empty base: act at the END of the exponent, next to the "^"; the exponent
+     frame may already exist parked at offset 0 */
   var ef=null;
   for(var pd=stack.length-1;pd>0;pd--){
     if(stack[pd].node===powCtx && stack[pd].slot==="exp"){ ef=stack[pd]; break; }
