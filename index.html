@@ -3519,7 +3519,11 @@ function statConfirm(){
     if(st.buf==="-"){ st.buf=null; }
     else{
       st.rows[st.r][st.c]=st.buf; st.buf=null;
-      if(st.c < (st.type==="2var"?1:0)) st.c++; else { st.c=0; if(st.r<st.rows.length-1) st.r++; else st.rows.push(["",""]); }
+      /* Commit and advance. Appending a new row must ALSO move into it, or the
+         next value overwrites the row just finished: entering 10,20,30,40,50
+         used to store [10],[20],[30],[50] - n=4 and mean 27.5 instead of 30. */
+      if(st.c < (st.type==="2var"?1:0)) st.c++;
+      else { st.c=0; if(st.r<st.rows.length-1) st.r++; else { st.rows.push(["",""]); st.r=st.rows.length-1; } }
     }
   }
   render();
@@ -3570,7 +3574,10 @@ function tableEquals(){
   if(t.step===1){ t.g=JSON.parse(JSON.stringify(root)); t.gOn=t.g.length>0; clearInput(); t.step=2; render(); return; }
   if(t.step===2){ t.start=exprToString(root); clearInput(); t.step=3; render(); return; }
   if(t.step===3){ t.end=exprToString(root); clearInput(); t.step=4; render(); return; }
-  if(t.step===4){ t.stepv=exprToString(root); clearInput(); generateTable(); return; }
+  if(t.step===4){ t.stepv=exprToString(root); clearInput(); generateTable(); t.step=5; return; }
+  /* step 5: the table is already on screen, so a further "=" has nothing to
+     confirm (it used to re-run generateTable with the parameters already
+     consumed and throw Syntax ERROR) */
 }
 function exprToString(arr){ return arr.map(function(n){ if(n.t==="num") return n.v; if(n.t==="op") return n.v; return ""; }).join(""); }
 function generateTable(){
@@ -3693,6 +3700,10 @@ function solveRatio(){
   for(var i=0;i<4;i++){ if(r.cells[i]!==null&&r.cells[i]!=="") vals[i]=parseFloat(r.cells[i]); }
   var A=vals[0],B=vals[1],C=vals[2],D=vals[3];
   var missing=r.cells.indexOf(null);
+  /* No unknown left: all four cells already hold a value, so there is nothing
+     to solve for. Re-running the solver used to fall through to the last formula
+     and write r.cells[-1], turning a correct "x = 6" into "x = 2". */
+  if(missing<0) return;
   var res;
   try{
     if(missing===3) res=C*B/A;

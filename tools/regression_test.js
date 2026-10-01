@@ -71,6 +71,15 @@ expect("TABLE f(x)=x^2","MENU 7 XKEY SQR EQUALS EQUALS 1 EQUALS 5 EQUALS 1 EQUAL
 expect("EQUATION sim","MENU 8 OPTN 1 2 2 EQUALS 1 EQUALS 5 EQUALS 1 EQUALS NEG 1 EQUALS 1 EQUALS EQUALS","x1 = 2");
 expect("INEQ","MENU 9 OPTN 1 1 EQUALS NEG 3 EQUALS 2 EQUALS EQUALS","x ");
 expect("RATIO","MENU 0 1 EQUALS 2 EQUALS 3 EQUALS EQUALS","x = 6");
+/* STAT must advance into the row it appends: five values -> n=5 and mean 30
+   (the last value used to overwrite the fourth row: n=4, mean 27.5). */
+expect("STAT 1-var n=5","MENU 6 1 1 0 EQUALS 2 0 EQUALS 3 0 EQUALS 4 0 EQUALS 5 0 EQUALS OPTN 1","n = 5");
+expect("STAT 1-var mean","MENU 6 1 1 0 EQUALS 2 0 EQUALS 3 0 EQUALS 4 0 EQUALS 5 0 EQUALS OPTN 1","x = 30");
+/* Re-running the RATIO solver when all four cells hold a value must not
+   recompute (it fell through to the last formula and gave x = 2). */
+expect("RATIO re-solve keeps the answer","MENU 0 2 EQUALS 4 EQUALS 3 EQUALS OPTN 1","x = 6");
+/* A further "=" after the table is generated is a no-op, not a Syntax ERROR. */
+expect("TABLE extra = is a no-op","MENU 7 XKEY SQR EQUALS EQUALS 1 EQUALS 5 EQUALS 1 EQUALS EQUALS","25");
 console.log("--- editing / memory / history ---");
 expect("DEL mid-expression","1 2 3 LEFT LEFT DEL","23");
 expect("Ans recall","4 ADD 5 EQUALS AC 2 MUL ANS EQUALS","18");
