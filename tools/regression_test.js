@@ -27,9 +27,9 @@ function boot(){
   vm.createContext(ctx);vm.runInContext(pageSrc,ctx,{filename:"p.js"});
   return {calc:ctx.__calc,screen:()=>cache.screen.innerHTML};
 }
-function flat(h){let prev;h=String(h).replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&nbsp;/g," ").replace(/\u2212/g,"-");
+function flat(h){let prev;h=String(h).replace(/&amp;/g,"&").replace(/&nbsp;/g," ").replace(/\u2212/g,"-");
  do{prev=h;h=h.replace(/<span class="math frac" style="font-size:[\d.]+em"><span class="num">([\s\S]*?)<\/span><span class="den">([\s\S]*?)<\/span><\/span>/g,(m,n,d)=>flat(n)+"/"+flat(d));}while(h!==prev);
- return h.replace(/<span class="box[^"]*"><\/span>/g,"\u2610").replace(/<span class="cursor"><\/span>/g,"|").replace(/<[^>]+>/g,"");}
+ return h.replace(/<span class="box[^"]*"><\/span>/g,"\u2610").replace(/<span class="cursor"><\/span>/g,"|").replace(/<[^>]+>/g,"").replace(/&lt;/g,"<").replace(/&gt;/g,">");}
 function screenText(h){return flat(h).replace(/\s+/g," ").trim();}
 let fail=0,pass=0;
 function expect(label,keys,want){
@@ -70,16 +70,25 @@ expect("STAT regression","MENU 6 2 1 EQUALS 2 EQUALS 2 EQUALS 4 EQUALS 3 EQUALS 
 expect("TABLE f(x)=x^2","MENU 7 XKEY SQR EQUALS EQUALS 1 EQUALS 5 EQUALS 1 EQUALS","25");
 expect("EQUATION sim","MENU 8 OPTN 1 2 2 EQUALS 1 EQUALS 5 EQUALS 1 EQUALS NEG 1 EQUALS 1 EQUALS EQUALS","x1 = 2");
 expect("INEQ","MENU 9 OPTN 1 1 EQUALS NEG 3 EQUALS 2 EQUALS EQUALS","x ");
-expect("RATIO","MENU 0 1 EQUALS 2 EQUALS 3 EQUALS EQUALS","x = 6");
+expect("RATIO","MENU 0 2 1 EQUALS 2 EQUALS 3 EQUALS EQUALS","x = 6");
 /* STAT must advance into the row it appends: five values -> n=5 and mean 30
    (the last value used to overwrite the fourth row: n=4, mean 27.5). */
 expect("STAT 1-var n=5","MENU 6 1 1 0 EQUALS 2 0 EQUALS 3 0 EQUALS 4 0 EQUALS 5 0 EQUALS OPTN 1","n = 5");
 expect("STAT 1-var mean","MENU 6 1 1 0 EQUALS 2 0 EQUALS 3 0 EQUALS 4 0 EQUALS 5 0 EQUALS OPTN 1","x = 30");
 /* Re-running the RATIO solver when all four cells hold a value must not
    recompute (it fell through to the last formula and gave x = 2). */
-expect("RATIO re-solve keeps the answer","MENU 0 2 EQUALS 4 EQUALS 3 EQUALS OPTN 1","x = 6");
+expect("RATIO re-solve keeps the answer","MENU 0 2 2 EQUALS 4 EQUALS 3 EQUALS OPTN 1","x = 6");
 /* A further "=" after the table is generated is a no-op, not a Syntax ERROR. */
 expect("TABLE extra = is a no-op","MENU 7 XKEY SQR EQUALS EQUALS 1 EQUALS 5 EQUALS 1 EQUALS EQUALS","25");
+console.log("--- numerical boundary regressions ---");
+expect("negative real cube root", "SHIFT SQRT NEG 8 EQUALS", "-2");
+expect("nonmonic quadratic", "MENU 8 OPTN 2 2 2 EQUALS 0 EQUALS NEG 2 EQUALS EQUALS", "x1 = -1");
+expect("nonmonic inequality", "MENU 9 OPTN 1 2 EQUALS 0 EQUALS NEG 2 EQUALS EQUALS", "x < -1 or x > 1");
+expect("inequality all real", "MENU 9 OPTN 1 1 EQUALS 0 EQUALS 1 EQUALS EQUALS", "All real numbers");
+expect("inequality isolated root", "MENU 9 OPTN 1 OPTN DOWN 3 1 EQUALS 0 EQUALS 0 EQUALS EQUALS", "x = 0");
+expect("strict inequality excludes repeated root", "MENU 9 OPTN 1 1 EQUALS 0 EQUALS 0 EQUALS EQUALS", "x < 0 or x > 0");
+expect("weak inequality merges intervals", "MENU 9 OPTN 1 OPTN DOWN 2 1 EQUALS 0 EQUALS 0 EQUALS EQUALS", "All real numbers");
+expect("inequality no solution", "MENU 9 OPTN 1 OPTN DOWN 1 1 EQUALS 0 EQUALS 1 EQUALS EQUALS", "No solution");
 console.log("--- editing / memory / history ---");
 expect("DEL mid-expression","1 2 3 LEFT LEFT DEL","23");
 expect("Ans recall","4 ADD 5 EQUALS AC 2 MUL ANS EQUALS","18");

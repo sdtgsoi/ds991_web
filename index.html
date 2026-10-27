@@ -118,6 +118,21 @@
   }
   .menu-item.sel{background:rgba(32,38,26,.16);}
   .menu-item.sel .ico{background:var(--lcd-ink);color:#c7d1b3;}
+  .menu-panel{display:flex;flex-direction:column;flex:1;min-height:0;}
+  .menu-header{display:flex;justify-content:space-between;gap:4px;font-size:12px;line-height:17px;border-bottom:1px solid currentColor;white-space:nowrap;}
+  .menu-header>span:first-child{overflow:hidden;text-overflow:ellipsis;}
+  .menu-list{display:grid;gap:1px;min-height:0;align-content:start;margin-top:2px;}
+  .menu-row,.menu-item{font-family:inherit;font-weight:inherit;color:inherit;background:transparent;border:0;}
+  .menu-row{display:flex;align-items:center;gap:4px;text-align:left;font-size:11px;line-height:17px;padding:0 2px;cursor:pointer;min-width:0;}
+  .menu-row>span:last-child{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+  .menu-shortcut{display:inline-block;min-width:13px;text-align:center;border:1px solid currentColor;font-size:9px;line-height:11px;}
+  .menu-row.sel{background:rgba(32,38,26,.18);}
+  .menu-row.unavailable{opacity:.65;}
+  .menu-symbols{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .menu-symbols .menu-row{font-size:10px;line-height:14px;}
+  .menu-footer{display:flex;justify-content:space-between;font-size:9px;line-height:12px;margin-top:auto;}
+  .menu-prompt{font-size:12px;padding:12px 0;}
+  .menu-notice{font-size:10px;line-height:13px;}
   /* ---- the calculation screen: expression line + answer line ---- */
   .exprwrap{
     flex:1; display:flex; flex-direction:column; justify-content:center;
@@ -399,12 +414,106 @@
   <div class="badge">fx-991CN X</div>
 </div>
 <script>
+/* BEGIN GENERATED MATH CORE */
+/* Pure numerical core. Embedded by sync.sh; require() works without a DOM. */
+var DS991Math = (function(){
+  "use strict";
+  function fail(){ var e=new Error("Math ERROR"); e.msg="Math ERROR"; throw e; }
+  function z(re,im){ return {re:re,im:im||0}; }
+  function add(a,b){ return z(a.re+b.re,a.im+b.im); }
+  function sub(a,b){ return z(a.re-b.re,a.im-b.im); }
+  function mul(a,b){ return z(a.re*b.re-a.im*b.im,a.re*b.im+a.im*b.re); }
+  function div(a,b){ var d=b.re*b.re+b.im*b.im; if(!d||!isFinite(d)) fail(); return z((a.re*b.re+a.im*b.im)/d,(a.im*b.re-a.re*b.im)/d); }
+  function abs(a){ return Math.hypot(a.re,a.im); }
+  function evalPoly(c,x){ var v=z(c[0],0); for(var i=1;i<c.length;i++) v=add(mul(v,x),z(c[i],0)); return v; }
+  function realNthRoot(value,degree){
+    if(!Number.isFinite(value)||!Number.isFinite(degree)||degree===0) fail();
+    if(value<0){
+      if(!Number.isInteger(degree)||Math.abs(degree%2)!==1) fail();
+      var negative=-Math.pow(-value,1/degree);
+      if(!Number.isFinite(negative)) fail();
+      return negative;
+    }
+    var result=Math.pow(value,1/degree);
+    if(!Number.isFinite(result)) fail();
+    return result;
+  }
+  function polynomialRoots(coeff){
+    if(!Array.isArray(coeff)||!coeff.length||!coeff.every(Number.isFinite)) fail();
+    var c=coeff.slice();
+    while(c.length>1&&c[0]===0) c.shift();
+    var n=c.length-1;
+    if(n<1||n>4) fail();
+    // Normalize the polynomial: Durand-Kerner assumes a monic polynomial.
+    var lead=c[0]; c=c.map(function(v){return v/lead;});
+    if(!c.every(Number.isFinite)) fail();
+    if(n===1){ if(!Number.isFinite(-c[1])) fail(); return [z(-c[1],0)]; }
+    // Quadratics use a stable closed form, including exactly repeated roots.
+    if(n===2){
+      var scale=Math.max(1,Math.abs(c[1]),Math.sqrt(Math.abs(c[2])));
+      var b=c[1]/scale,d=c[2]/scale/scale,disc=b*b-4*d;
+      if(disc<0) return [z(-b*scale/2,Math.sqrt(-disc)*scale/2),z(-b*scale/2,-Math.sqrt(-disc)*scale/2)];
+      var q=-0.5*(b+(b>=0?1:-1)*Math.sqrt(disc));
+      return q===0?[z(0,0),z(0,0)]:[z(q*scale,0),z(d/q*scale,0)];
+    }
+    // Exact zero roots are removed before iteration (avoids coincident seeds).
+    if(c[n]===0) return polynomialRoots(c.slice(0,-1)).concat([z(0,0)]);
+    // Scale x to keep the iterates near the unit circle.
+    var radius=1;
+    for(var k=1;k<=n;k++) radius=Math.max(radius,Math.pow(Math.abs(c[k]),1/k));
+    var scaled=c.map(function(v,i){ for(var j=0;j<i;j++) v/=radius; return v; });
+    for(var attempt=0;attempt<4;attempt++){
+      var roots=[];
+      for(var i=0;i<n;i++){
+        var angle=2*Math.PI*(i+0.17+attempt*0.11)/n;
+        roots.push(z(1.3*Math.cos(angle),1.3*Math.sin(angle)));
+      }
+      var valid=true;
+      for(var iter=0;iter<1200;iter++){
+        var delta=0,next=[];
+        try{
+          for(var i=0;i<n;i++){
+            var den=z(1,0);
+            for(var j=0;j<n;j++) if(i!==j) den=mul(den,sub(roots[i],roots[j]));
+            var step=div(evalPoly(scaled,roots[i]),den);
+            next.push(sub(roots[i],step)); delta=Math.max(delta,abs(step));
+          }
+        }catch(e){ valid=false; break; }
+        roots=next;
+        if(!roots.every(function(v){return Number.isFinite(v.re)&&Number.isFinite(v.im);})){valid=false;break;}
+        if(delta<1e-12) break;
+      }
+      if(!valid) continue;
+      // Check both residuals and reconstructed coefficients. Never publish an
+      // unconverged root set just because the iteration budget was exhausted.
+      var rebuilt=[z(1,0)];
+      roots.forEach(function(root){
+        var next=[rebuilt[0]];
+        for(var i=1;i<=rebuilt.length;i++) next[i]=sub(i<rebuilt.length?rebuilt[i]:z(0,0),mul(root,rebuilt[i-1]));
+        rebuilt=next;
+      });
+      var good=roots.every(function(v){return abs(evalPoly(scaled,v))<1e-9;})&&
+        rebuilt.every(function(v,i){return abs(sub(v,z(scaled[i],0)))<1e-8;});
+      if(good) return roots.map(function(v){
+        var re=v.re*radius,im=v.im*radius;
+        if(!Number.isFinite(re)||!Number.isFinite(im)) fail();
+        return z(re,Math.abs(im)<1e-9*Math.max(1,Math.abs(re))?0:im);
+      });
+    }
+    fail();
+  }
+  return {polynomialRoots:polynomialRoots,realNthRoot:realNthRoot};
+})();
+if(typeof module!=="undefined"&&module.exports) module.exports=DS991Math;
+/* END GENERATED MATH CORE */
 /*
  * ============================================================================
  * DS991 - a browser simulator for the fx-991CN X.
  * ============================================================================
  *
- * The whole application is this single IIFE. The pipeline is:
+ * The numerical core above is generated from src/math-core.js.
+ * Editing and rendering sources are also embedded inside the application IIFE.
+ * Mode handling and evaluation live here. The pipeline is:
  *
  *     key (mouse / touch / keyboard)
  *         -> dispatch(id)                 route a physical key to a command
@@ -452,8 +561,7 @@
  * render each slot with `slotOrBox()`, which draws the caret when the caret is
  * inside that slot and a placeholder box when the slot is empty.
  *
- * The file is ordered bottom-up so that helpers are already defined by the time
- * the behavioural sections use them.
+ * Function declarations are hoisted. State initialization order still matters.
  */
 (function(){
 "use strict";
@@ -487,8 +595,9 @@ var S = {
   vars:{A:0,B:0,C:0,D:0,E:0,F:0,X:0,Y:0,Z:0},
   M:0,                 /* independent memory */
   angle:"DEG",         /* DEG | RAD | GRA */
+  language:"en",contrast:1,decimalOutput:false,complexFormat:"rect",resultComplexFormat:null,equationComplex:true,tableFunctions:2,
   io:"MATH",           /* MATH | LINE input-output setting */
-  fmt:{mode:"NORM",digits:2},  /* NORM | FIX | SCI plus its digit count */
+  fmt:{mode:"NORM",digits:2,norm:1},  /* NORM | FIX | SCI plus its digit count */
   fracResult:true,     /* show exact results (S<->D off) */
   fracForm:"improper", /* improper | mixed display of fractions */
   exact:true,          /* S<->D state: true = exact form, false = decimal */
@@ -742,6 +851,8 @@ function tapVisual(el){
   setTimeout(function(){ el.classList.remove("pressed"); },110);
 }
 
+/* BEGIN GENERATED EXPRESSION RENDERER */
+// Embedded inside the application closure by sync.sh; shares its state/helpers.
 /* ============================ DISPLAY HELPERS ============================ */
 /* Expression tree -> LCD HTML.
    renderArr()/renderNode() walk the tree; renderNodeAt() is the variant that
@@ -942,7 +1053,12 @@ function renderNode(n,ctx){
     case "op": return opSym(n.v);
     case "variable": return '<span class="math">'+esc(n.name)+'</span>';
     case "const": return constSym(n.name);
-    case "post": return renderNode({t:"dummy"})+esc(n.v);
+    case "post":
+      if(n.v==="FORMAT:polar")return "▶r∠θ";
+      if(n.v==="FORMAT:rect")return "▶a+bi";
+      if(n.v.indexOf("ANGLE:")===0)return '<sup>'+esc({DEG:"°",RAD:"r",GRA:"g"}[n.v.slice(6)])+'</sup>';
+      if(n.v.indexOf("ENG:")===0)return esc(n.v.slice(4));
+      return esc(n.v.indexOf("CONV:")===0?n.v.slice(5):n.v);
     case "func": return '<span class="math">'+fnSym(n.name)+'('+slotOrBox(n.arg,null,null,ctx)+')</span>';
     case "paren": return '<span class="math paren">('+slotOrBox(n.body,null,null,ctx)+')</span>';
     case "abs": return '<span class="math">|'+slotOrBox(n.body,null,null,ctx)+'|</span>';
@@ -972,9 +1088,11 @@ function fnSym(name){
   return m[name]||name;
 }
 function constSym(name){
+  if(SCIENTIFIC_BY_ID[name])return '<span class="math">'+esc(SCIENTIFIC_BY_ID[name].label)+'</span>';
   var m={PI:"\u03c0",e:"e",i:"i",Ans:"Ans",M:"M",euler:"e",alpha:"\u03b1"};
   return '<span class="math">'+esc(m[name]!==undefined?m[name]:name)+'</span>';
 }
+/* END GENERATED EXPRESSION RENDERER */
 
 /* ============================ NUMBER FORMAT ============================ */
 /* Turning a JS number into display text, honouring the SETUP choices:
@@ -988,20 +1106,20 @@ function fmtReal(x){
   if(Object.is(x,-0)) x=0;
   var f=S.fmt;
   if(f.mode==="FIX") return x.toFixed(Math.min(9,f.digits));
-  if(f.mode==="SCI"){ return sciHTML(x,f.digits); }
+  if(f.mode==="SCI"){ return sciHTML(x,f.digits,true); }
   var a=Math.abs(x);
-  if(a!==0 && (a>=1e10 || a<1e-9)) return sciHTML(x,10);
+  if(a!==0 && (a>=1e10 || a<(f.norm===1?1e-2:1e-9))) return sciHTML(x,10);
   var s=x.toPrecision(10);
   if(s.indexOf("e")>=0) return sciHTML(x,10);
   if(s.indexOf(".")>=0) s=s.replace(/0+$/,"").replace(/\.$/,"");
   if(s==="-0") s="0";
   return esc(s).replace(/-/g,"\u2212");
 }
-function sciHTML(x,sig){
+function sciHTML(x,sig,keepZeros){
   var s=x.toExponential(Math.max(0,sig-1));
   var parts=s.split("e");
   var m=parts[0], e=parseInt(parts[1],10);
-  if(m.indexOf(".")>=0) m=m.replace(/0+$/,"").replace(/\.$/,"");
+  if(!keepZeros&&m.indexOf(".")>=0) m=m.replace(/0+$/,"").replace(/\.$/,"");
   m=m.replace(/-/g,"\u2212");
   return m+"\u00d710"+'<span class="sup">'+esc(String(e)).replace(/-/g,"\u2212")+'</span>';
 }
@@ -1041,7 +1159,15 @@ function mixedHTML(n,d){
   var wn=Math.floor(an/d), rem=an%d;
   return '<span class="math">'+sign+wn+'</span><span class="math frac" style="font-size:.78em"><span class="num">'+rem+'</span><span class="den">'+d+'</span></span>';
 }
-function formatValue(v){
+function complexOutputFormat(arr){
+  var last=arr[arr.length-1];
+  return last&&last.t==="post"&&(last.v==="FORMAT:polar"||last.v==="FORMAT:rect")?last.v.slice(7):null;
+}
+function formatResult(v){
+  return formatValue(v,S.mode==="CMPLX"?S.resultComplexFormat:null);
+}
+function formatValue(v,complexFormat){
+  if(complexFormat)return formatComplex(toC(v),complexFormat);
   if(v && typeof v==="object" && v.re!==undefined){
     return formatComplex(v);
   }
@@ -1066,8 +1192,9 @@ function formatValue(v){
   }
   return fmtReal(v);
 }
-function formatComplex(z){
+function formatComplex(z,format){
   var re=z.re, im=z.im;
+  if((format||S.complexFormat)==="polar") return fmtReal(Math.hypot(re,im))+"∠"+fmtReal(radToAng(Math.atan2(im,re)));
   if(Math.abs(im)<1e-12) return fmtReal(re);
   if(S.mode==="CMPLX" && S.base===10 && false) return "";
   var out="";
@@ -1081,6 +1208,8 @@ function formatComplex(z){
   return out;
 }
 
+/* BEGIN GENERATED EXPRESSION EDITOR */
+// Embedded inside the application closure by sync.sh; shares its state/helpers.
 /* ============================ EDITING ============================ */
 /* The caret and everything that mutates the expression. Read the "cursor model"
    note at the top of the file first: a frame's `pos` is a digit offset, and the
@@ -1214,9 +1343,9 @@ function splitNumberAt(arr,idx,at){
 }
 /* ---- 3. frame bookkeeping: entering/leaving template slots ---- */
 function resetCursor(){ stack=[{arr:root,pos:0}]; }
-function clearInput(){ root.length=0; resetCursor(); S.resultShown=false; S.error=null; }
+function clearInput(){ root.length=0; resetCursor(); S.resultShown=false; S.resultComplexFormat=null; S.error=null; }
 function startFreshIfResult(){
-  if(S.resultShown){ root.length=0; resetCursor(); S.resultShown=false; }
+  if(S.resultShown){ root.length=0; resetCursor(); S.resultShown=false; S.resultComplexFormat=null; }
 }
 /* Leaving the answer view to EDIT: keep what is in the expression but bring the
    caret back and take the answer line down. Typing already did this through
@@ -2440,7 +2569,7 @@ function inputAbs(){ startFreshIfResult(); var f=T_abs(); ins(f); enter(f,"body"
 function inputParen(){ startFreshIfResult(); var f=T_paren(); ins(f); enter(f,"body"); }
 function inputCloseParen(){
   for(var i=stack.length-1;i>0;i--){
-    if(stack[i].node && (stack[i].node.t==="paren"||stack[i].node.t==="abs")){
+    if(stack[i].node && (stack[i].node.t==="paren"||stack[i].node.t==="abs"||stack[i].node.t==="func")){
       var pn=stack[i].node;
       stack.length=i;
       var p=cur();
@@ -2459,6 +2588,7 @@ function inputDeriv(){ startFreshIfResult(); var f=T_deriv(); ins(f); enter(f,"b
 function inputSum(){ startFreshIfResult(); var f=T_sum(); ins(f); enter(f,"lower"); }
 function inputProd(){ startFreshIfResult(); var f=T_prod(); ins(f); enter(f,"lower"); }
 function inputLogBase(){ startFreshIfResult(); var f=T_logbase(); ins(f); enter(f,"base"); }
+/* END GENERATED EXPRESSION EDITOR */
 
 /* ============================ EVALUATOR ============================ */
 /* Expression tree -> value, independent of the DOM.
@@ -2570,6 +2700,13 @@ function primeFactor(n){
   return out.join("\u00d7");
 }
 
+function evaluateCalculation(arr){
+  // A display command terminates the top-level Complex expression. It never
+  // changes its numeric value and is not an arithmetic postfix on the last atom.
+  // Elsewhere the parser rejects FORMAT tokens, including in nested arguments.
+  if(S.mode==="CMPLX"&&complexOutputFormat(arr))arr=arr.slice(0,-1);
+  return evaluateList(arr);
+}
 function evaluateList(arr,ctxVar){
   var i=0;
   function peek(){ return arr[i]; }
@@ -2624,6 +2761,24 @@ function evaluateList(arr,ctxVar){
       var t=peek();
       if(t.t==="post" && t.v==="!"){ next(); v=cfact(v); }
       else if(t.t==="post" && t.v==="%"){ next(); v=cdiv(v,100); }
+      else if(t.t==="post" && t.v.indexOf("ANGLE:")===0){
+        next();var unit=t.v.slice(6);
+        if(isC(v)||["DEG","RAD","GRA"].indexOf(unit)<0)throw err("Math ERROR");
+        if(unit!==S.angle){
+          var radians=unit==="DEG"?v*Math.PI/180:unit==="GRA"?v*Math.PI/200:v;
+          v=radToAng(radians);
+        }
+      }
+      else if(t.t==="post" && t.v.indexOf("ENG:")===0){
+        next();var exponent=ENGINEERING_EXPONENTS[t.v.slice(4)];
+        if(exponent===undefined)throw err("Syntax ERROR");
+        v=cmul(v,Math.pow(10,exponent));
+      }
+      else if(t.t==="post" && t.v.indexOf("CONV:")===0){
+        next(); var conversion=CONVERSION_BY_ID[t.v.slice(5)];
+        if(!conversion||isC(v))throw err("Math ERROR");
+        v=v*conversion.factor+(conversion.offset||0);
+      }
       else if(t.t==="post" && (t.v==="\u00b0"||t.v==="\u2019"||t.v==="\u201d")){ next(); }
       else break;
     }
@@ -2636,6 +2791,7 @@ function evaluateList(arr,ctxVar){
       case "num": return t.base?parseInt(t.v||"0",t.base):parseFloat(t.v===""?"0":t.v);
       case "variable": return getVar(t.name);
       case "const":
+        if(SCIENTIFIC_BY_ID[t.name])return SCIENTIFIC_BY_ID[t.name].val;
         if(t.name==="PI") return Math.PI;
         if(t.name==="e"||t.name==="euler") return Math.E;
         if(t.name==="i"){ if(S.mode!=="CMPLX") throw err("Syntax ERROR"); return mkC(0,1); }
@@ -2649,7 +2805,13 @@ function evaluateList(arr,ctxVar){
       case "mixed": { var w=evaluateList(t.whole), n2=evaluateList(t.num), d2=evaluateList(t.den); return cadd(w,cdiv(n2,d2)); }
       case "pow": return cpow(evaluateList(t.base), evaluateList(t.exp));
       case "sqrt": return csqrt(evaluateList(t.body));
-      case "root": { var n=evaluateList(t.n), b=evaluateList(t.body); if(n==2) return csqrt(b); return cpow(b,cdiv(1,n)); }
+      case "root": {
+        var n=evaluateList(t.n), b=evaluateList(t.body);
+        if(!isC(n)&&!isC(b)&&b<0&&Number.isInteger(n)&&Math.abs(n%2)===1) return DS991Math.realNthRoot(b,n);
+        if(n==2) return csqrt(b);
+        if(!isC(b)&&b<0&&S.mode!=="CMPLX") throw err("Math ERROR");
+        return cpow(b,cdiv(1,n));
+      }
       case "logbase": { var bb=evaluateList(t.base), ar=evaluateList(t.arg); return cdiv(cln(ar),cln(bb)); }
       case "post": throw err("Syntax ERROR");
       case "intg": return evalIntegral(t);
@@ -2713,174 +2875,591 @@ function evalSeries(t,isProd){
   return acc;
 }
 
+/* BEGIN GENERATED MENUS */
+// Embedded inside the application closure. Menu data and navigation share S.
 /* ============================ MENUS ============================ */
-/* Every text menu on the LCD (mode list, SETUP, OPTN, CONST, conversion...) is
-   the same structure: {type,index,cols,title,items}. openMenu() builds the item
-   list for a type, renderMenu() draws it and handleMenuKey() routes digits,
-   arrows, = and AC while a menu is open. */
-var CONST_LIST=[
-  ["c","Speed of light",299792458],
-  ["g","Gravitation",9.80665],
-  ["h","Planck",6.62607015e-34],
-  ["NA","Avogadro",6.02214076e23],
-  ["R","Gas constant",8.314462618],
-  ["e","Elementary charge",1.602176634e-19],
-  ["me","Electron mass",9.1093837015e-31],
-  ["mp","Proton mass",1.67262192369e-27],
-  ["u","Atomic mass",1.66053906660e-27],
-  ["F","Faraday",96485.33212],
-  ["k","Boltzmann",1.380649e-23],
-  ["G","Grav. constant",6.67430e-11]
-];
-var CONV_LIST=[
-  ["in\u2192cm","inch to cm",2.54],
-  ["cm\u2192in","cm to inch",1/2.54],
-  ["ft\u2192m","foot to metre",0.3048],
-  ["m\u2192ft","metre to foot",1/0.3048],
-  ["mile\u2192km","mile to km",1.609344],
-  ["km\u2192mile","km to mile",1/1.609344],
-  ["lb\u2192kg","pound to kg",0.45359237],
-  ["kg\u2192lb","kg to pound",1/0.45359237],
-  ["\u00b0F\u2192\u00b0C","F to C",null],
-  ["\u00b0C\u2192\u00b0F","C to F",null],
-  ["atm\u2192Pa","atm to Pa",101325],
-  ["Pa\u2192atm","Pa to atm",1/101325]
-];
-function openMenu(type){
-  S.shift=false; S.alpha=false;
-  if(type==="MAIN"){
-    S.menu={type:"MAIN",index:0,cols:5,items:MODES.map(function(m){return {id:m,label:MODE_META[m].name,ico:MODE_META[m].ico};})};
-  } else if(type==="OPTN"){
-    var items=getOptions(S.mode);
-    S.menu={type:"OPTN",index:0,cols:2,items:items,title:"OPTION"};
-  } else if(type==="SETUP"){
-    S.menu={type:"SETUP",index:0,cols:1,title:"SETTINGS",items:settingsItems()};
-  } else if(type==="CONST"){
-    S.menu={type:"CONST",index:0,cols:2,title:"CONSTANTS",items:CONST_LIST.map(function(c){return {id:c[0],label:c[0]+"  "+c[1],val:c[2]};})};
-  } else if(type==="CONV"){
-    S.menu={type:"CONV",index:0,cols:2,title:"CONVERSION",items:CONV_LIST.map(function(c){return {id:c[0],label:c[1],val:c[2]};})};
-  } else if(type==="RESET"){
-    S.menu={type:"RESET",index:0,cols:1,title:"RESET",items:[{id:"settings",label:"Reset Settings"},{id:"memory",label:"Reset Memory"},{id:"all",label:"Reset All"}]};
-  } else if(type==="VAR"){
-    var vnames=["A","B","C","D","E","F","X","Y","Z"];
-    var vitems=vnames.map(function(n){ return {id:n,label:n+" = "+fmtRealPlain(S.vars[n])}; });
-    vitems.push({id:"M",label:"M = "+fmtRealPlain(S.M)});
-    vitems.push({id:"Ans",label:"Ans = "+fmtRealPlain(S.ans)});
-    S.menu={type:"VAR",index:0,cols:2,title:"VARIABLE",items:vitems};
+// CN X RJA530830-001V01, pp. 57-58, 68-69. Constants use CODATA 2010:
+// https://physics.nist.gov/cuu/Constants/ArchiveASCII/allascii_2010.txt
+var CONSTANT_CATEGORIES = [
+  {
+    "label": "Universal",
+    "zh": "通用常数",
+    "items": [
+      {
+        "id": "SCI:0:0",
+        "label": "h",
+        "val": 6.62606957e-34
+      },
+      {
+        "id": "SCI:0:1",
+        "label": "ℏ",
+        "val": 1.054571726e-34
+      },
+      {
+        "id": "SCI:0:2",
+        "label": "c₀",
+        "val": 299792458.0
+      },
+      {
+        "id": "SCI:0:3",
+        "label": "ε₀",
+        "val": 8.854187817e-12
+      },
+      {
+        "id": "SCI:0:4",
+        "label": "μ₀",
+        "val": 1.2566370614e-06
+      },
+      {
+        "id": "SCI:0:5",
+        "label": "Z₀",
+        "val": 376.730313461
+      },
+      {
+        "id": "SCI:0:6",
+        "label": "G",
+        "val": 6.67384e-11
+      },
+      {
+        "id": "SCI:0:7",
+        "label": "lₚ",
+        "val": 1.616199e-35
+      },
+      {
+        "id": "SCI:0:8",
+        "label": "tₚ",
+        "val": 5.39106e-44
+      }
+    ]
+  },
+  {
+    "label": "Electromagnetic",
+    "zh": "电磁常数",
+    "items": [
+      {
+        "id": "SCI:1:0",
+        "label": "μN",
+        "val": 5.05078353e-27
+      },
+      {
+        "id": "SCI:1:1",
+        "label": "μB",
+        "val": 9.27400968e-24
+      },
+      {
+        "id": "SCI:1:2",
+        "label": "e",
+        "val": 1.602176565e-19
+      },
+      {
+        "id": "SCI:1:3",
+        "label": "Φ₀",
+        "val": 2.067833758e-15
+      },
+      {
+        "id": "SCI:1:4",
+        "label": "G₀",
+        "val": 7.7480917346e-05
+      },
+      {
+        "id": "SCI:1:5",
+        "label": "KJ",
+        "val": 483597870000000.0
+      },
+      {
+        "id": "SCI:1:6",
+        "label": "RK",
+        "val": 25812.8074434
+      }
+    ]
+  },
+  {
+    "label": "Atomic & Nuclear",
+    "zh": "原子与核常数",
+    "items": [
+      {
+        "id": "SCI:2:0",
+        "label": "mₚ",
+        "val": 1.672621777e-27
+      },
+      {
+        "id": "SCI:2:1",
+        "label": "mₙ",
+        "val": 1.674927351e-27
+      },
+      {
+        "id": "SCI:2:2",
+        "label": "mₑ",
+        "val": 9.10938291e-31
+      },
+      {
+        "id": "SCI:2:3",
+        "label": "mμ",
+        "val": 1.883531475e-28
+      },
+      {
+        "id": "SCI:2:4",
+        "label": "a₀",
+        "val": 5.2917721092e-11
+      },
+      {
+        "id": "SCI:2:5",
+        "label": "α",
+        "val": 0.0072973525698
+      },
+      {
+        "id": "SCI:2:6",
+        "label": "rₑ",
+        "val": 2.8179403267e-15
+      },
+      {
+        "id": "SCI:2:7",
+        "label": "λc",
+        "val": 2.4263102389e-12
+      },
+      {
+        "id": "SCI:2:8",
+        "label": "γₚ",
+        "val": 267522200.5
+      },
+      {
+        "id": "SCI:2:9",
+        "label": "λcₚ",
+        "val": 1.32140985623e-15
+      },
+      {
+        "id": "SCI:2:10",
+        "label": "λcₙ",
+        "val": 1.3195909068e-15
+      },
+      {
+        "id": "SCI:2:11",
+        "label": "R∞",
+        "val": 10973731.568539
+      },
+      {
+        "id": "SCI:2:12",
+        "label": "μₚ",
+        "val": 1.410606743e-26
+      },
+      {
+        "id": "SCI:2:13",
+        "label": "μₑ",
+        "val": -9.2847643e-24
+      },
+      {
+        "id": "SCI:2:14",
+        "label": "μₙ",
+        "val": -9.6623647e-27
+      },
+      {
+        "id": "SCI:2:15",
+        "label": "μμ",
+        "val": -4.49044807e-26
+      },
+      {
+        "id": "SCI:2:16",
+        "label": "mτ",
+        "val": 3.16747e-27
+      }
+    ]
+  },
+  {
+    "label": "Physico-Chem",
+    "zh": "物理化学常数",
+    "items": [
+      {
+        "id": "SCI:3:0",
+        "label": "u",
+        "val": 1.660538921e-27
+      },
+      {
+        "id": "SCI:3:1",
+        "label": "F",
+        "val": 96485.3365
+      },
+      {
+        "id": "SCI:3:2",
+        "label": "NA",
+        "val": 6.02214129e+23
+      },
+      {
+        "id": "SCI:3:3",
+        "label": "k",
+        "val": 1.3806488e-23
+      },
+      {
+        "id": "SCI:3:4",
+        "label": "Vm",
+        "val": 0.022413968
+      },
+      {
+        "id": "SCI:3:5",
+        "label": "R",
+        "val": 8.3144621
+      },
+      {
+        "id": "SCI:3:6",
+        "label": "c₁",
+        "val": 3.74177153e-16
+      },
+      {
+        "id": "SCI:3:7",
+        "label": "c₂",
+        "val": 0.01438777
+      },
+      {
+        "id": "SCI:3:8",
+        "label": "σ",
+        "val": 5.670373e-08
+      }
+    ]
+  },
+  {
+    "label": "Adopted Values",
+    "zh": "采用值",
+    "items": [
+      {
+        "id": "SCI:4:0",
+        "label": "g",
+        "val": 9.80665
+      },
+      {
+        "id": "SCI:4:1",
+        "label": "atm",
+        "val": 101325.0
+      },
+      {
+        "id": "SCI:4:2",
+        "label": "RK-90",
+        "val": 25812.807
+      },
+      {
+        "id": "SCI:4:3",
+        "label": "KJ-90",
+        "val": 483597900000000.0
+      }
+    ]
+  },
+  {
+    "label": "Other",
+    "zh": "其他",
+    "items": [
+      {
+        "id": "SCI:5:0",
+        "label": "t",
+        "val": 273.15
+      }
+    ]
   }
-  render();
+];
+var SCIENTIFIC_BY_ID={};
+CONSTANT_CATEGORIES.forEach(function(group){group.items.forEach(function(item){SCIENTIFIC_BY_ID[item.id]=item;});});
+// Unit categories/order follow the CN X reference sheet. Coefficients use SI
+// definitions and NIST SP811 (2008); cal means calorie at 15 °C.
+var CONVERSION_CATEGORIES=[];
+function conversionGroup(label,zh,pairs){
+  var items=[];
+  pairs.forEach(function(pair){
+    var from=pair[0],to=pair[1],factor=pair[2];
+    items.push({id:from+"→"+to,label:from+"→"+to,factor:factor});
+    items.push({id:to+"→"+from,label:to+"→"+from,factor:1/factor});
+  });
+  CONVERSION_CATEGORIES.push({label:label,zh:zh,items:items});
+}
+conversionGroup("Length","长度",[["in","cm",2.54],["ft","m",0.3048],["yd","m",0.9144],["mile","km",1.609344],["n mile","m",1852],["pc","km",3.085678e13]]);
+conversionGroup("Area","面积",[["acre","m²",4046.8564224]]);
+conversionGroup("Volume","体积",[["gal(US)","L",3.785411784],["gal(UK)","L",4.54609]]);
+conversionGroup("Mass","质量",[["oz","g",28.349523125],["lb","kg",0.45359237]]);
+conversionGroup("Velocity","速度",[["km/h","m/s",1/3.6]]);
+conversionGroup("Pressure","压力",[["atm","Pa",101325],["mmHg","Pa",133.322387415],["kgf/cm²","Pa",98066.5],["lbf/in²","kPa",6.894757293168]]);
+conversionGroup("Energy","能量",[["kgf·m","J",9.80665],["J","cal",1/4.1858]]);
+conversionGroup("Power","功率",[["hp","kW",0.7456998715822702]]);
+CONVERSION_CATEGORIES.push({label:"Temperature",zh:"温度",items:[
+  {id:"°F→°C",label:"°F→°C",factor:5/9,offset:-32*5/9},
+  {id:"°C→°F",label:"°C→°F",factor:9/5,offset:32}
+]});
+var CONVERSION_BY_ID={};
+CONVERSION_CATEGORIES.forEach(function(group){group.items.forEach(function(item){CONVERSION_BY_ID[item.id]=item;});});
+var SETUP_PER_PAGE=4;
+var MENU_SHORTCUTS=["1","2","3","4","5","6","7","8","9","A","B","C","D","E","F","M","≈"];
+function menuText(en,zh){return S.language==="zh"?(zh||en):en;}
+function menuItem(id,en,zh,extra){
+  var item={id:id,label:menuText(en,zh)};
+  if(extra) Object.keys(extra).forEach(function(k){item[k]=extra[k];});
+  return item;
+}
+function setMenu(type,title,items,extra){
+  var m={type:type,title:title,items:items,index:0,cols:1,perPage:4};
+  if(extra) Object.keys(extra).forEach(function(k){m[k]=extra[k];});
+  S.menu=m;S.shift=false;S.alpha=false;render();return m;
+}
+function openMenu(type){
+  if((type==="CONST"||type==="CONV")&&S.mode==="BASE") return;
+  if(type==="MAIN"){
+    var zh=["计算","复数","基数","矩阵","向量","统计","表格","方程/函数","不等式","比例"];
+    setMenu(type,"",MODES.map(function(id,i){return menuItem(id,MODE_META[id].name,zh[i],{ico:MODE_META[id].ico});}),{cols:5,perPage:10});
+  }else if(type==="SETUP"){
+    setMenu(type,menuText("SETUP","设置"),settingsItems());
+  }else if(type==="OPTN"){
+    setMenu(type,menuText("OPTION","选项"),getOptions(S.mode));
+  }else if(type==="CONST"||type==="CONV"){
+    var groups=type==="CONST"?CONSTANT_CATEGORIES:CONVERSION_CATEGORIES;
+    setMenu(type,menuText(type==="CONST"?"CONSTANTS":"CONVERSION",type==="CONST"?"科学常数":"单位换算"),groups.map(function(g,i){return menuItem(String(i),g.label,g.zh); }));
+  }else if(type==="EQTYPE"){
+    setMenu(type,menuText("Equation/Func","方程/函数"),[menuItem("sim","Simul Equation","联立方程"),menuItem("poly","Polynomial","多项式")]);
+  }else if(type==="INEQ_DEGREE"){
+    setMenu(type,menuText("Inequality degree","不等式次数"),[menuItem(2,"Degree 2","二次"),menuItem(3,"Degree 3","三次"),menuItem(4,"Degree 4","四次")]);
+  }else if(type==="RATIO_TYPE"){
+    setMenu(type,menuText("Ratio","比例"),[menuItem(2,"A:B = X:D"),menuItem(3,"A:B = C:X")]);
+  }else if(type==="STAT_TYPE"){
+    setMenu(type,menuText("Select Type","选择类型"),[
+      menuItem("1var","1-Variable","单变量统计"),menuItem("2var","y=ax+b"),
+      menuItem("quadratic","y=ax²+bx+c",null,{unavailable:true}),menuItem("log","y=a+b·ln(x)",null,{unavailable:true}),
+      menuItem("exp","y=a·e^(bx)",null,{unavailable:true}),menuItem("abexp","y=a·b^x",null,{unavailable:true}),
+      menuItem("power","y=a·x^b",null,{unavailable:true}),menuItem("inverse","y=a+b/x",null,{unavailable:true})]);
+  }else if(type==="RESET"){
+    setMenu(type,menuText("RESET","复位"),[
+      menuItem("settings","Setup Data","设置数据"),menuItem("memory","Memory","存储器"),menuItem("all","Initialize All","全部初始化")]);
+  }else if(type==="VAR"){
+    var names=["A","B","C","D","E","F","X","Y","Z","M","Ans"];
+    setMenu(type,menuText("VARIABLE","变量"),names.map(function(n){return menuItem(n,n+" = "+fmtRealPlain(n==="M"?S.M:n==="Ans"?S.ans:S.vars[n]));}));
+  }
 }
 function getOptions(mode){
-  function it(id,label){ return {id:id,label:label}; }
+  function it(id,en,zh){return menuItem(id,en,zh);}
   switch(mode){
-    case "CMPLX": return [it("abs","Abs"),it("arg","Arg"),it("conj","Conjg"),it("re","ReP"),it("im","ImP"),it("pol","\u2220")];
-    case "BASE": return [it("dec","DEC"),it("hex","HEX"),it("bin","BIN"),it("oct","OCT"),it("and","AND"),it("or","OR"),it("xor","XOR"),it("xnor","XNOR"),it("not","NOT")];
-    case "MATRIX": return [it("define","Define Matrix"),it("det","Determinant"),it("inv","Inverse"),it("trn","Transpose"),it("add","MatA+MatB"),it("sub","MatA\u2212MatB"),it("mul","MatA\u00d7MatB")];
-    case "VECTOR": return [it("define","Define Vector"),it("dot","Dot"),it("cross","Cross"),it("vabs","Abs"),it("angle","Angle"),it("add","VctA+VctB")];
-    case "STAT": return [it("calc","Calculate"),it("clr","Clear Data")];
-    case "TABLE": return [it("exit","Exit Table")];
-    case "EQUATION": return [it("sim","Simultaneous"),it("poly","Polynomial")];
-    case "INEQ": return [it("deg2","Degree 2"),it("deg3","Degree 3"),it("deg4","Degree 4"),it("gt",">"),it("lt","<"),it("ge","\u2265"),it("le","\u2264"),it("solve","Solve")];
-    case "RATIO": return [it("solve","Solve")];
-    default: return [it("abs","Abs"),it("deriv","d/dx"),it("intg","\u222bd\u2093"),it("sum","\u03a3"),it("prod","\u03a0"),it("logbase","log\u2090b"),it("pol","Pol"),it("rec","Rec"),it("fact","FACT")];
+    case "CALC": return [it("calc_hyperbolic","Hyperbolic Func","双曲函数"),it("calc_angle","Angle Unit","角度单位"),it("calc_engineering","Engineer Symbol","工程符号")];
+    // CN X pp.34–35 / EX p.18: four functions, then two output commands.
+    case "CMPLX": return [it("arg","Argument","辐角"),it("conj","Conjugate","共轭"),it("re","Real Part","实部提取"),it("im","Imaginary Part","虚部提取"),it("complex_polar","▶r∠θ"),it("complex_rect","▶a+bi")];
+    case "BASE": return [it("dec","DEC"),it("hex","HEX"),it("bin","BIN"),it("oct","OCT"),menuItem("and","AND",null,{unavailable:true}),menuItem("or","OR",null,{unavailable:true}),menuItem("xor","XOR",null,{unavailable:true}),menuItem("xnor","XNOR",null,{unavailable:true}),it("not","NOT")];
+    case "MATRIX": return [it("define","Define Matrix","定义矩阵"),it("det","Determinant","行列式"),it("inv","Inverse","逆矩阵"),it("trn","Transpose","转置"),it("add","MatA+MatB"),it("sub","MatA−MatB"),it("mul","MatA×MatB")];
+    case "VECTOR": return [it("define","Define Vector","定义向量"),it("dot","Dot","数量积"),it("cross","Cross","向量积"),it("vabs","Abs","模"),it("angle","Angle","夹角"),it("add","VctA+VctB")];
+    case "STAT": return [it("calc","Calculate","计算"),it("clr","Clear Data","清除数据")];
+    case "TABLE": return [it("exit","Exit Table","退出数表")];
+    case "EQUATION": return [it("sim","Simultaneous","联立方程"),it("poly","Polynomial","多项式")];
+    case "INEQ": return [it("deg2","Degree 2","二次"),it("deg3","Degree 3","三次"),it("deg4","Degree 4","四次"),it("gt",">"),it("lt","<"),it("ge","≥"),it("le","≤"),it("solve","Solve","求解")];
+    case "RATIO": return [it("solve","Solve","求解")];
+    default: return [];
   }
 }
-var SETUP_PER_PAGE=4;
+// Calculate-mode OPTN follows CN X pp.22/27. These are expression commands,
+// independent of the global SETUP angle and engineering-display settings.
+var ENGINEERING_EXPONENTS={m:-3,"μ":-6,n:-9,p:-12,f:-15,k:3,M:6,G:9,T:12,P:15,E:18};
+function openCalculateOptionMenu(id,parent){
+  var title=parent.items[parent.index].label,items,cols;
+  if(id==="calc_hyperbolic"){
+    items=[menuItem("sinh","sinh"),menuItem("cosh","cosh"),menuItem("tanh","tanh"),
+      menuItem("asinh","sinh⁻¹"),menuItem("acosh","cosh⁻¹"),menuItem("atanh","tanh⁻¹")];cols=2;
+  }else if(id==="calc_angle"){
+    items=[menuItem("DEG","°"),menuItem("RAD","r"),menuItem("GRA","g")];cols=3;
+  }else if(id==="calc_engineering"){
+    items=["m","μ","n","p","f","k","M","G","T","P","E"].map(function(symbol){return menuItem(symbol,symbol);});cols=3;
+  }else return;
+  setMenu("CALC_OPTN_ITEMS",title,items,{parent:parent,category:id,symbols:true,cols:cols,perPage:items.length});
+}
+function prepareCalculateInsertion(){
+  if(S.resultShown)return;
+  var c=cur(),number=numTokenAtCursor();
+  if(number){var index=c.arr.indexOf(number);splitNumberAt(c.arr,index,c.pos-tokenStart(c.arr,index));}
+}
+function insertCalculateSuffix(value){
+  // A postfix command entered on a result operates on Ans; a draft command
+  // stays at its current cursor, including inside a template argument.
+  if(S.resultShown){clearInput();ins(T_var("Ans"));}
+  clearAfterAnswer();ins(T_post(value));
+}
+function insertComplexFormat(format){
+  if(S.resultShown){clearInput();ins(T_var("Ans"));}
+  // Output commands apply to the complete expression, at its end, even when
+  // the caret was inside a function or a number. Re-selection replaces a draft
+  // command instead of producing two conflicting output commands.
+  unwindCursor();
+  if(complexOutputFormat(root))root.pop();
+  stack[0].pos=arrDigits(root);
+  clearAfterAnswer();ins(T_post("FORMAT:"+format));
+}
 function settingsItems(){
   return [
-    {id:"io",label:"Input/Output : "+S.io},
-    {id:"angle",label:"Angle Unit : "+S.angle},
-    {id:"fmt",label:"Number Format : "+S.fmt.mode},
-    {id:"frac",label:"Fraction Result : "+(S.fracResult?"On":"Off")},
-    {id:"reset",label:"Reset"},
-    {id:"exit",label:"Exit"}
+    menuItem("io","Input/Output","输入/输出"),menuItem("angle","Angle Unit","角度单位"),
+    menuItem("fmt","Number Format","显示格式"),menuItem("engineering","Engineer Symbol","工程符号",{unavailable:true}),
+    menuItem("frac","Fraction Result","分数结果"),menuItem("complex","Complex","复数"),
+    menuItem("statistics","Statistics","统计",{unavailable:true}),menuItem("equation","Equation/Func","方程/函数"),
+    menuItem("table","Table","表格"),menuItem("decimal","Decimal Mark","小数点显示",{unavailable:true}),
+    menuItem("separator","Digit Separator","数字分隔符",{unavailable:true}),menuItem("font","MultiLine Font","多行字体",{unavailable:true}),
+    menuItem("language","Language","语言"),menuItem("contrast","Contrast","对比度")
   ];
 }
+function menuPageStart(m){return Math.floor(m.index/m.perPage)*m.perPage;}
+function closeMenu(){S.menu=null;S.alpha=false;S.shift=false;render();}
+function menuUnavailable(){S.menu.notice=menuText("Not implemented","尚未实现");S.alpha=false;render();}
 function handleMenuKey(id){
-  var m=S.menu; if(!m) return;
-  if(id==="ON"){ S.menu=null; render(); return; }
-  if(id==="MENU"){ S.menu=null; render(); return; }
-  if(id==="AC"){ S.menu=null; render(); return; }
-  if(id==="UP"||id==="DOWN"||id==="LEFT"||id==="RIGHT"){
-    var cols=m.cols||1;
-    if(id==="UP") m.index=Math.max(0,m.index-cols);
-    if(id==="DOWN") m.index=Math.min(m.items.length-1,m.index+cols);
-    if(id==="LEFT") m.index=Math.max(0,m.index-1);
-    if(id==="RIGHT") m.index=Math.min(m.items.length-1,m.index+1);
-    render(); return;
-  }
-  if(id==="EQUALS"){ selectMenuItem(); return; }
-  if(/^[0-9]$/.test(id)){
-    var n=parseInt(id,10);
-    var idx;
-    if(m.type==="SETUP"){
-      var pageStart=Math.floor(m.index/SETUP_PER_PAGE)*SETUP_PER_PAGE;
-      idx=pageStart+((id==="0")?9:(n-1));
-    } else {
-      idx=(id==="0")?9:(n-1);
-    }
-    if(idx>=0 && idx<m.items.length){ m.index=idx; selectMenuItem(); }
+  var m=S.menu;if(!m) return;
+  if(id==="ON"){closeMenu();return;}
+  if(id==="MENU"){openMenu("MAIN");return;}
+  if(id==="OPTN"){openMenu("OPTN");return;}
+  if(id==="AC"){closeMenu();return;}
+  if(m.type==="CONTRAST"){
+    if(id==="LEFT"||id==="RIGHT"){S.contrast=Math.max(0.5,Math.min(1.5,S.contrast+(id==="LEFT"?-0.1:0.1)));render();return;}
+    if(id==="EQUALS"||id==="OK"){closeMenu();return;}
     return;
   }
-  if(id==="DEL"||id==="SHIFT"){ m.index=Math.max(0,m.index-1); render(); }
-}
-function selectMenuItem(){
-  var m=S.menu, item=m.items[m.index];
+  if(id==="LEFT"&&m.parent){S.menu=m.parent;S.alpha=false;S.shift=false;render();return;}
+  if(m.symbols&&S.shift&&id==="EQUALS"){
+    S.shift=false;if(m.items.length>16){m.index=16;selectMenuItem();}return;
+  }
+  if(id==="EQUALS"||id==="OK"){selectMenuItem();return;}
+  if(m.type==="DIGITS"){
+    if(/^[0-9]$/.test(id)){applySetup(m.setting,Number(id));return;}
+    return;
+  }
   if(m.type==="MAIN"){
-    S.menu=null; setMode(item.id); return;
+    if(id==="UP"||id==="DOWN"||id==="LEFT"||id==="RIGHT"){
+      var delta=id==="UP"?-m.cols:id==="DOWN"?m.cols:id==="LEFT"?-1:1;
+      m.index=Math.max(0,Math.min(m.items.length-1,m.index+delta));render();return;
+    }
+    if(/^[0-9]$/.test(id)){var n=id==="0"?9:Number(id)-1;if(n<m.items.length){m.index=n;selectMenuItem();}return;}
+    return;
   }
-  if(m.type==="OPTN"){
-    S.menu=null; doOptionAction(item.id); return;
+  if(id==="UP"||id==="DOWN"){
+    m.index=Math.max(0,Math.min(Math.floor((m.items.length-1)/m.perPage)*m.perPage,menuPageStart(m)+(id==="UP"?-m.perPage:m.perPage)));
+    m.notice=null;S.alpha=false;render();return;
   }
-  if(m.type==="SETUP"){
-    doSetup(item.id); return;
+  if(m.symbols&&id==="ALPHA"){S.alpha=!S.alpha;render();return;}
+  var shortcut=id;
+  if(m.symbols&&S.alpha){shortcut=varNameFromKey(id)||id;S.alpha=false;}
+  else if(m.symbols&&id==="SHIFT"){S.shift=true;render();return;}
+  else if(m.symbols&&S.shift&&id==="EQUALS"){shortcut="≈";S.shift=false;}
+  var local=m.symbols?MENU_SHORTCUTS.indexOf(shortcut):(/^[1-4]$/.test(id)?Number(id)-1:-1);
+  if(local>=0){var index=menuPageStart(m)+local;if(index<m.items.length&&local<m.perPage){m.index=index;selectMenuItem();}}
+}
+function menuCell(){
+  var e;
+  if(S.mode==="MATRIX"&&(e=S.matrix.edit)&&!e.dimStage)return {holder:S.matrix,value:e.data[e.r][e.c]};
+  if(S.mode==="VECTOR"&&(e=S.vector.edit)&&!e.dimStage)return {holder:S.vector,value:e.data[e.c]};
+  if(S.mode==="STAT"&&S.stat.type)return {holder:S.stat,value:S.stat.rows[S.stat.r][S.stat.c]};
+  if((S.mode==="EQUATION"||S.mode==="INEQ")&&S.eq.coeff.length)return {holder:S.eq,value:S.eq.coeff[S.eq.sel]};
+  if(S.mode==="RATIO"&&S.ratio.cells[S.ratio.sel]!==null)return {holder:S.ratio,value:S.ratio.cells[S.ratio.sel]};
+  return null;
+}
+function menuCanEditExpression(){return S.mode==="CALC"||S.mode==="CMPLX"||S.mode==="TABLE";}
+function selectMenuItem(){
+  var m=S.menu,item=m&&m.items[m.index];if(!item) return;
+  S.alpha=false;S.shift=false;
+  if(item.unavailable){menuUnavailable();return;}
+  if(m.type==="MAIN"){setMode(item.id);return;}
+  if(m.type==="EQTYPE"){S.menu=null;doOptionAction(item.id);return;}
+  if(m.type==="INEQ_DEGREE"){
+    setMenu("INEQ_SIGN",menuText("Inequality type","不等式类型"),[menuItem(">","> 0"),menuItem("<","< 0"),menuItem("≥","≥ 0"),menuItem("≤","≤ 0")],{parent:m,degree:item.id});return;
   }
-  if(m.type==="CONST"){
-    S.menu=null; startFreshIfResult(); ins(T_num(String(item.val))); render(); return;
+  if(m.type==="INEQ_SIGN"){
+    S.eq.n=m.degree;S.eq.coeff=new Array(m.degree+1).fill(0);S.eq.sel=0;S.eq.buf=null;S.eq.result=null;
+    S.eq.sign=item.id;closeMenu();return;
   }
-  if(m.type==="CONV"){
-    S.menu=null; startFreshIfResult();
-    var c=cur(); if(leftToken(c.arr,c.pos)) ins(T_op("*"));
-    if(item.id==="\u00b0F\u2192\u00b0C") ins(T_func("f2c"));
-    else if(item.id==="\u00b0C\u2192\u00b0F") ins(T_func("c2f"));
-    else ins(T_num(String(item.val)));
-    render(); return;
+  if(m.type==="RATIO_TYPE"){
+    S.ratio={cells:item.id===2?["","",null,""]:["","","",null],sel:0,buf:null,result:null,unknown:item.id};closeMenu();return;
   }
-  if(m.type==="VAR"){
-    S.menu=null; startFreshIfResult(); ins(T_var(item.id)); render(); return;
+  if(m.type==="STAT_TYPE"){
+    S.stat.type=item.id;S.stat.rows=item.id==="1var"?[[""],[""],[""],[""]]:[["",""],["",""],["",""],["",""]];
+    S.stat.r=0;S.stat.c=0;S.stat.buf=null;S.stat.results=null;closeMenu();return;
   }
+  if(m.type==="OPTN"&&S.mode==="CALC"){openCalculateOptionMenu(item.id,m);return;}
+  if(m.type==="CALC_OPTN_ITEMS"){
+    S.menu=null;prepareCalculateInsertion();
+    if(m.category==="calc_hyperbolic")inputFunc(item.id);
+    else insertCalculateSuffix((m.category==="calc_angle"?"ANGLE:":"ENG:")+item.id);
+    render();return;
+  }
+  if(m.type==="OPTN"){S.menu=null;doOptionAction(item.id);return;}
+  if(m.type==="SETUP"){doSetup(item.id);return;}
+  if(m.type==="CHOICE"){applySetup(m.setting,item.id);return;}
+  if(m.type==="CONST"||m.type==="CONV"){
+    var group=(m.type==="CONST"?CONSTANT_CATEGORIES:CONVERSION_CATEGORIES)[Number(item.id)];
+    setMenu(m.type+"_ITEMS",menuText(group.label,group.zh),group.items,{parent:m,symbols:true,cols:3,perPage:18});return;
+  }
+  if(m.type==="CONST_ITEMS"){
+    var cell=menuCell();
+    if(cell){cell.holder.buf=String(item.val);closeMenu();return;}
+    if(!menuCanEditExpression()){menuUnavailable();return;}
+    S.menu=null;startFreshIfResult();ins(T_const(item.id));render();return;
+  }
+  if(m.type==="CONV_ITEMS"){
+    var conversionCell=menuCell();
+    if(conversionCell){
+      var source=conversionCell.holder.buf;
+      if(source===null||source===undefined)source=conversionCell.value;
+      if(source===null||source===undefined||source===""||!isFinite(Number(source))){S.menu=null;S.error="Syntax ERROR";render();return;}
+      conversionCell.holder.buf=String(Number(source)*item.factor+(item.offset||0));closeMenu();return;
+    }
+    if(!menuCanEditExpression()){menuUnavailable();return;}
+    S.menu=null;
+    if(S.resultShown){clearInput();ins(T_var("Ans"));}
+    else if(root.length===0&&S.hasAns)ins(T_var("Ans"));
+    clearAfterAnswer();ins(T_post("CONV:"+item.id));render();return;
+  }
+  if(m.type==="VAR"){S.menu=null;startFreshIfResult();ins(T_var(item.id));render();return;}
   if(m.type==="RESET"){
-    if(item.id==="settings"){ resetSettings(); }
-    else if(item.id==="memory"){ resetMemory(); }
-    else { resetSettings(); resetMemory(); clearInput(); }
-    S.menu=null; S.message="Reset done"; render(); return;
+    setMenu("RESET_CONFIRM",menuText("Reset "+item.label+"?","复位："+item.label+"？"),[
+      menuItem("yes","Yes (=)","是 (=)"),menuItem("no","No","否")],{parent:m,reset:item.id});return;
+  }
+  if(m.type==="RESET_CONFIRM"){
+    if(item.id==="yes"){
+      if(m.reset==="settings"||m.reset==="all")resetSettings();
+      if(m.reset==="memory"||m.reset==="all")resetMemory();
+      clearInput();S.resultHTML="";
+      if(m.reset==="all"){
+        S.matrix={A:null,B:null,C:null,D:null,sel:"A",edit:null};
+        S.vector={A:null,B:null,C:null,D:null,sel:"A",edit:null};
+        S.stat={type:null,rows:[["",""],["",""],["",""],["",""]],r:0,c:0,buf:null,results:null};
+        S.calcPending=null;S.stoPending=false;S.message=null;setMode("CALC");return;
+      }
+    }
+    closeMenu();return;
   }
 }
-
-/* ============================ SETTINGS ============================ */
-/* The SETUP menu actions (angle unit, input/output, number format, fraction
-   result) and the two reset helpers. */
+function setupChoices(setting,items){
+  setMenu("CHOICE",S.menu.items[S.menu.index].label,items,{parent:S.menu,setting:setting});
+}
 function doSetup(id){
-  var m=S.menu;
-  if(id==="angle"){
-    var order=["DEG","RAD","GRA"]; S.angle=order[(order.indexOf(S.angle)+1)%3];
-  } else if(id==="io"){
-    S.io=S.io==="MATH"?"LINE":"MATH";
-  } else if(id==="fmt"){
-    var order2=[["NORM",2],["FIX",2],["SCI",6]];
-    var idx=0; for(var i=0;i<order2.length;i++) if(order2[i][0]===S.fmt.mode) idx=i;
-    var nx=order2[(idx+1)%order2.length]; S.fmt={mode:nx[0],digits:nx[1]};
-  } else if(id==="frac"){
-    S.fracResult=!S.fracResult;
-  } else if(id==="reset"){
-    S.menu=null; openMenu("RESET"); return;
-  } else if(id==="exit"){
-    S.menu=null; render(); return;
-  }
-  m.items=settingsItems(); render();
+  var choices;
+  if(id==="io") choices=[menuItem("math","MathI/MathO","数学输入/数学输出"),menuItem("decimal","MathI/DecimalO","数学输入/小数输出"),menuItem("line","LineI/LineO","线性输入/线性输出",{unavailable:true}),menuItem("linedecimal","LineI/DecimalO","线性输入/小数输出",{unavailable:true})];
+  if(id==="angle") choices=[menuItem("DEG","Degree (D)","度 (D)"),menuItem("RAD","Radian (R)","弧度 (R)"),menuItem("GRA","Gradian (G)","百分度 (G)")];
+  if(id==="fmt") choices=[menuItem("FIX","Fix","位数 (Fix)"),menuItem("SCI","Sci","科学 (Sci)"),menuItem("NORM","Norm","常规 (Norm)")];
+  if(id==="frac") choices=[menuItem("mixed","ab/c","带分数"),menuItem("improper","d/c","假分数")];
+  if(id==="complex") choices=[menuItem("rect","a+bi"),menuItem("polar","r∠θ")];
+  if(id==="equation") choices=[menuItem(true,"On","开"),menuItem(false,"Off","关")];
+  if(id==="table") choices=[menuItem(1,"f(x)"),menuItem(2,"f(x),g(x)")];
+  if(id==="language") choices=[menuItem("en","English"),menuItem("zh","中文")];
+  if(id==="contrast"){setMenu("CONTRAST",menuText("Contrast  ◀ ▶","对比度  ◀ ▶"),[],{parent:S.menu});return;}
+  if(choices) setupChoices(id,choices);
 }
-function resetSettings(){ S.angle="DEG"; S.io="MATH"; S.fmt={mode:"NORM",digits:2}; S.fracResult=true; }
-function resetMemory(){ for(var k in S.vars) S.vars[k]=0; S.M=0; S.ans=0; S.hasAns=false; S.history=[]; }
+function applySetup(id,value){
+  var m=S.menu;
+  if(id==="fmt"){
+    if(value==="NORM"){
+      setMenu("CHOICE","Norm",[menuItem(1,"Norm 1"),menuItem(2,"Norm 2")],{parent:m,setting:"norm"});return;
+    }
+    setMenu("DIGITS",value+menuText(" digits (0–9)"," 位数 (0–9)"),[],{parent:m,setting:value});return;
+  }
+  if(id==="FIX"||id==="SCI")S.fmt={mode:id,digits:id==="SCI"&&value===0?10:value,norm:S.fmt.norm};
+  else if(id==="norm")S.fmt={mode:"NORM",digits:2,norm:value};
+  else if(id==="io"){S.io="MATH";S.decimalOutput=value==="decimal";S.exact=!S.decimalOutput;}
+  else if(id==="angle")S.angle=value;
+  else if(id==="frac")S.fracForm=value;
+  else if(id==="complex")S.complexFormat=value;
+  else if(id==="equation")S.equationComplex=value;
+  else if(id==="table")S.tableFunctions=value;
+  else if(id==="language")S.language=value;
+  if(S.resultShown&&S.hasAns){try{S.resultHTML=formatResult(S.ans);}catch(e){S.error=e.msg||"Math ERROR";}}
+  closeMenu();
+}
+function resetSettings(){
+  S.angle="DEG";S.io="MATH";S.decimalOutput=false;S.fmt={mode:"NORM",digits:2,norm:1};
+  S.fracResult=true;S.fracForm="improper";S.exact=true;S.eng=false;
+  S.complexFormat="rect";S.equationComplex=true;S.tableFunctions=2;
+}
+function resetMemory(){for(var k in S.vars)S.vars[k]=0;S.M=0;S.ans=0;S.hasAns=false;S.history=[];}
+/* END GENERATED MENUS */
 
 /* ============================ MODES ============================ */
 /* Entering a calculation mode: reset that mode's working data and redraw. */
@@ -2894,6 +3473,8 @@ function setMode(mode){
   if(mode==="EQUATION"){ S.eq={kind:null,n:2,sign:">",coeff:[],sel:0,result:null,buf:null}; }
   if(mode==="INEQ"){ S.eq={kind:"ineq",n:2,sign:">",coeff:[],sel:0,result:null,buf:null}; }
   if(mode==="RATIO"){ S.ratio={cells:["","","",null],sel:0,buf:null,result:null,unknown:3}; }
+  var initialMenus={STAT:"STAT_TYPE",EQUATION:"EQTYPE",INEQ:"INEQ_DEGREE",RATIO:"RATIO_TYPE"};
+  if(initialMenus[mode]){openMenu(initialMenus[mode]);return;}
   render();
 }
 
@@ -2987,41 +3568,10 @@ function solveLinear(A,b){
   }
   return M.map(function(r){return r[n];});
 }
-function polyRoots(coeff){
-  var c=coeff.slice();
-  while(c.length>1 && Math.abs(c[0])<1e-14) c.shift();
-  var n=c.length-1;
-  if(n<1) throw err("Math ERROR");
-  var roots=[]; var r=[]; for(var i=0;i<n;i++) r.push({re:0.4,im:0.9+0.1*i});
-  function evalP(z){ var out=mkC(0,0); for(var i=0;i<c.length;i++){ out=cadd(cmul(out,z),c[i]); } return out; }
-  for(var iter=0;iter<200;iter++){
-    var maxd=0;
-    for(var i=0;i<n;i++){
-      var num=evalP(r[i]); var den=mkC(1,0);
-      for(var j=0;j<n;j++){ if(j!==i) den=cmul(den,csub(r[i],r[j])); }
-      var d=cdiv(num,den); r[i]=csub(r[i],d);
-      maxd=Math.max(maxd,cabs(d));
-    }
-    if(maxd<1e-13) break;
-  }
-  return r.map(function(z){ return Math.abs(z.im)<1e-7?mkC(z.re,0):z; });
-}
+function polyRoots(coeff){ return DS991Math.polynomialRoots(coeff); }
 
-/* ============================ (re)RESOLVE CONSTANT CONV ============================ */
-/* Look up a scientific constant or unit-conversion factor by name, used by the
-   CONST and CONV menus. */
-function convConstValue(name){
-  for(var i=0;i<CONV_LIST.length;i++){
-    if(("CONV:"+CONV_LIST[i][0])===name){
-      var c=CONV_LIST[i];
-      if(c[3]==="f2c") return function(x){ return (x-32)*5/9; };
-      if(c[3]==="c2f") return function(x){ return x*9/5+32; };
-      return c[2];
-    }
-  }
-  return null;
-}
-
+/* BEGIN GENERATED SCREEN RENDERER */
+// Embedded inside the application closure by sync.sh; shares its state/helpers.
 /* ============================ RENDER ============================ */
 /* One entry point, render(), which dispatches on the current mode, and one
    draw function per screen: calculation, menus, matrix, vector, statistics,
@@ -3051,6 +3601,7 @@ function render(){
   }
 }
 function renderStatus(){
+  LCD.style.filter="contrast("+S.contrast.toFixed(1)+")";
   function sd(el,on){ document.getElementById(el).classList.toggle("on",!!on); }
   sd("st-shift",S.shift); sd("st-alpha",S.alpha); sd("st-m",Math.abs(S.M)>1e-15);
   document.getElementById("st-deg").classList.toggle("on",S.angle==="DEG");
@@ -3063,41 +3614,36 @@ function renderStatus(){
   document.getElementById("st-fmt").textContent=S.fmt.mode!=="NORM"?S.fmt.mode:S.base!==10?"":S.io;
 }
 function renderMenu(){
-  var m=S.menu;
-  var html='<div class="screen-main" style="position:static;transform:none">';
-  html+='<div class="menu-title">'+esc(m.title||MODE_META[S.mode].name)+'</div>';
-  if(m.type==="SETUP"){
-    var per=SETUP_PER_PAGE;
-    var total=Math.ceil(m.items.length/per);
-    var page=Math.floor(m.index/per);
-    var start=page*per;
-    html+='<div style="font-size:9px;text-align:right;padding:0 8px 2px 0;letter-spacing:.5px">PAGE '+ (page+1) +'/'+total +'</div>';
-    html+='<div style="font-size:11px;line-height:1.7;padding-left:10px">';
-    for(var si=start;si<Math.min(start+per,m.items.length);si++){
-      var sit=m.items[si];
-      html+='<div style="'+(si===m.index?"background:rgba(32,38,26,.16)":"")+'">'+esc(sit.label)+'</div>';
+  var m=S.menu,start=menuPageStart(m),pages=Math.max(1,Math.ceil(m.items.length/m.perPage));
+  var title=m.type==="MAIN"?m.items[m.index].label:m.title;
+  var html='<div class="menu-panel"><div class="menu-header"><span>'+esc(title)+'</span>'+
+    (m.parent?'<span class="menu-back">◀</span>':'')+'</div>';
+  if(m.type==="MAIN"){
+    html+='<div class="menu-grid">';
+    m.items.forEach(function(it,i){html+='<button class="menu-item '+(i===m.index?'sel':'')+'" data-mi="'+i+'">'+
+      '<span class="ico">'+esc(it.ico)+'</span><span>'+esc(it.label)+'</span></button>';});
+    html+='</div>';
+  }else if(m.type==="DIGITS"){
+    html+='<div class="menu-prompt">'+menuText('Press a digit: 0–9','请按数字键：0–9')+'</div>';
+  }else if(m.type==="CONTRAST"){
+    html+='<div class="menu-prompt">◀ '+Math.round((S.contrast-0.5)*10)+' ▶</div>';
+  }else{
+    html+='<div class="menu-list '+(m.symbols?'menu-symbols':'')+'"'+
+      (m.symbols?' style="grid-template-columns:repeat('+m.cols+',minmax(0,1fr))"':'')+'>';
+    for(var i=start;i<Math.min(start+m.perPage,m.items.length);i++){
+      var it=m.items[i],key=m.symbols?MENU_SHORTCUTS[i-start]:String(i-start+1);
+      html+='<button class="menu-row '+(i===m.index?'sel':'')+(it.unavailable?' unavailable':'')+'" data-mi="'+i+'"'+
+        (it.unavailable?' aria-disabled="true"':'')+'><span class="menu-shortcut">'+esc(key)+'</span><span>'+esc(it.label)+(it.unavailable?' *':'')+'</span></button>';
     }
     html+='</div>';
-  } else if(m.type==="RESET"){
-    html+='<div style="font-size:11px;line-height:1.7;padding-left:10px">';
-    m.items.forEach(function(it,i){ html+='<div style="'+(i===m.index?"background:rgba(32,38,26,.16)":"")+'">'+esc(it.label)+'</div>'; });
-    html+='</div>';
-  } else if(m.type==="OPTN"||m.type==="CONST"||m.type==="CONV"||m.type==="VAR"){
-    html+='<div style="font-size:11px;line-height:1.55;column-count:2;padding-left:8px">';
-    m.items.forEach(function(it,i){ html+='<div style="'+(i===m.index?"background:rgba(32,38,26,.16)":"")+'">'+esc(it.label)+'</div>'; });
-    html+='</div>';
-  } else {
-    html+='<div class="menu-grid">';
-    m.items.forEach(function(it,i){
-      html+='<div class="menu-item '+(i===m.index?"sel":"")+'" data-mi="'+i+'">'+
-        '<div class="ico">'+esc(it.ico)+'</div><div>'+esc(it.label)+'</div></div>';
-    });
-    html+='</div>';
   }
-  html+='</div>';
+  if(m.notice)html+='<div class="menu-notice">'+esc(m.notice)+'</div>';
+  html+='<div class="menu-footer"><span>'+menuText('AC: close','AC：关闭')+'</span>'+
+    (pages>1?'<span>'+((start>0?'▲ ':'')+(start+m.perPage<m.items.length?'▼ ':'')+(Math.floor(start/m.perPage)+1)+'/'+pages)+'</span>':'')+'</div></div>';
   SCREEN.innerHTML=html;
-  Array.prototype.forEach.call(SCREEN.querySelectorAll("[data-mi]"),function(el){
-    el.addEventListener("pointerdown",function(e){ e.preventDefault(); S.menu.index=parseInt(el.getAttribute("data-mi"),10); selectMenuItem(); });
+  Array.prototype.forEach.call(SCREEN.querySelectorAll('[data-mi]'),function(el){
+    el.addEventListener('pointerdown',function(e){e.preventDefault();S.menu.index=Number(el.getAttribute('data-mi'));selectMenuItem();});
+    el.addEventListener('click',function(e){if(e.detail===0){S.menu.index=Number(el.getAttribute('data-mi'));selectMenuItem();}});
   });
 }
 function renderError(){
@@ -3337,7 +3883,7 @@ function renderIneq(){
       html+='<span style="display:inline-block;min-width:36px;border:1px solid rgba(32,38,26,.4);margin:2px;text-align:center;'+(sel2?"box-shadow:inset 0 0 0 2px var(--lcd-ink);":"")+'">'+(sel2&&e.buf!==null?esc(e.buf):esc(String(e.coeff[k])))+'</span>'+(pw2===0?"":("x"+(pw2>1?'<sup>'+pw2+'</sup>':"")))+(k<=e.n-1?' + ':'');
     }
     html+=' '+'<b>'+esc(e.sign)+'</b> 0</div>';
-    if(e.result) html+='<div class="stat-res" style="margin-top:6px">'+e.result+'</div>';
+    if(e.result) html+='<div class="stat-res" style="margin-top:6px">'+esc(e.result)+'</div>';
     html+='<div class="prompt" style="font-size:9px;margin-top:4px">Arrows: move \u00b7 = : confirm</div>';
   }
   html+='</div>';
@@ -3360,12 +3906,13 @@ function renderRatio(){
   html+='</div>';
   SCREEN.innerHTML=html;
 }
+/* END GENERATED SCREEN RENDERER */
 
 /* ============================ CLEAR / ANS ============================ */
 /* The commands behind the CALC, = and STO keys: evaluate the expression and
    push it to history, store a variable, and the numerical SOLVE used by
    SHIFT+CALC. */
-function doEquals(){
+function doEquals(forceDecimal){
   if(S.mode==="TABLE"){ tableEquals(); return; }
   if(S.mode==="MATRIX"||S.mode==="VECTOR"||S.mode==="STAT"||S.mode==="EQUATION"||S.mode==="INEQ"||S.mode==="RATIO"){
     if(S.mode==="MATRIX"&&S.matrix.edit){ return matrixConfirm(); }
@@ -3376,9 +3923,11 @@ function doEquals(){
     return;
   }
   try{
-    var val=evaluateList(root);
+    S.exact=forceDecimal?false:!S.decimalOutput;
+    var val=evaluateCalculation(root);
     S.ans=val; S.hasAns=true;
-    S.resultHTML=formatValue(val);
+    S.resultComplexFormat=S.mode==="CMPLX"?complexOutputFormat(root):null;
+    S.resultHTML=formatResult(val);
     S.resultShown=true;
     S.lastExpr=JSON.parse(JSON.stringify(root));
     S.history.push({expr:JSON.parse(JSON.stringify(root)),val:val});
@@ -3393,10 +3942,10 @@ function doStore(name){
   try{
     var val;
     if(S.resultShown && S.hasAns) val=S.ans;
-    else val=evaluateList(root);
+    else {val=evaluateCalculation(root);S.resultComplexFormat=S.mode==="CMPLX"?complexOutputFormat(root):null;}
     if(name==="M"){ S.M=isC(val)?val.re:val; }
     else S.vars[name]=isC(val)?val.re:val;
-    S.ans=val; S.hasAns=true; S.resultShown=true; S.resultHTML=formatValue(val);
+    S.ans=val; S.hasAns=true; S.resultShown=true; S.resultHTML=formatResult(val);
   }catch(e){ S.error=(e&&e.msg)?e.msg:"Syntax ERROR"; }
   render();
 }
@@ -3411,7 +3960,7 @@ function doCalc(){
 function calcConfirm(){
   var cp=S.calcPending;
   try{
-    var v=evaluateList(root);
+    var v=evaluateCalculation(root);
     if(isC(v)) v=v.re;
     S.vars[cp.queue[cp.idx]]=v;
   }catch(e){ S.error=(e&&e.msg)?e.msg:"Syntax ERROR"; S.calcPending=null; render(); return; }
@@ -3419,8 +3968,10 @@ function calcConfirm(){
   clearInput();
   if(cp.idx>=cp.queue.length){
     try{
-      var val=evaluateList(S.calcExpr);
-      S.ans=val; S.hasAns=true; S.resultShown=true; S.resultHTML=formatValue(val);
+      var val=evaluateCalculation(S.calcExpr);
+      S.ans=val; S.hasAns=true; S.resultShown=true;
+      S.resultComplexFormat=S.mode==="CMPLX"?complexOutputFormat(S.calcExpr):null;
+      S.resultHTML=formatResult(val);
     }catch(e2){ S.error=(e2&&e2.msg)?e2.msg:"Math ERROR"; }
     S.calcPending=null;
   } else {
@@ -3440,7 +3991,7 @@ function doSolve(){
 function solveConfirm(){
   var cp=S.calcPending;
   try{
-    var guess=evaluateList(root);
+    var guess=evaluateCalculation(root);
     if(isC(guess)) guess=guess.re;
     var result=numericalSolve(S.solveExpr,cp.varName,guess);
     S.vars[cp.varName]=result;
@@ -3570,7 +4121,7 @@ function handleRatioInput(id){
 }
 function tableEquals(){
   var t=S.table;
-  if(t.step===0){ t.f=JSON.parse(JSON.stringify(root)); clearInput(); t.step=1; render(); return; }
+  if(t.step===0){ t.f=JSON.parse(JSON.stringify(root)); clearInput(); t.step=S.tableFunctions===1?2:1; render(); return; }
   if(t.step===1){ t.g=JSON.parse(JSON.stringify(root)); t.gOn=t.g.length>0; clearInput(); t.step=2; render(); return; }
   if(t.step===2){ t.start=exprToString(root); clearInput(); t.step=3; render(); return; }
   if(t.step===3){ t.end=exprToString(root); clearInput(); t.step=4; render(); return; }
@@ -3634,7 +4185,9 @@ function solveEquation(){
       e.result=sol.map(function(v,i){return "x"+(i+1)+" = "+fmtReal(v);}).join("   ");
     } else {
       var roots=polyRoots(e.coeff);
-      e.result=roots.map(function(z,i){ return "x"+(i+1)+" = "+(Math.abs(z.im)<1e-7?fmtReal(z.re):(fmtReal(z.re)+(z.im>=0?"+":"\u2212")+fmtReal(Math.abs(z.im))+"i")); }).join("   ");
+      if(!S.equationComplex)roots=roots.filter(function(z){return Math.abs(z.im)<1e-7;});
+      if(!roots.length){e.result="No Real Roots";render();return;}
+      e.result=roots.map(function(z,i){ return "x"+(i+1)+" = "+(Math.abs(z.im)<1e-7?fmtReal(z.re):formatComplex(z)); }).join("   ");
     }
   }catch(ex){ e.result=esc(ex.msg||"Math ERROR"); }
   render();
@@ -3644,38 +4197,35 @@ function solveIneq(){
   try{
     var coeffs=e.coeff.slice();
     var roots=polyRoots(coeffs);
-    var reals=roots.filter(function(z){return Math.abs(z.im)<1e-7;}).map(function(z){return z.re;});
-    reals.sort(function(a,b){return a-b;});
-    var deg=e.n;
-    var parts=[];
-    var pts=reals.slice();
-    var test=pts.length?pts[0]-1:0;
-    var lead=coeffs[0];
-    var segs=[];
-    var bounds=[-Infinity].concat(pts,[Infinity]);
+    var pts=roots.filter(function(z){return Math.abs(z.im)<1e-7;}).map(function(z){return z.re;});
+    pts.sort(function(a,b){return a-b;});
+    pts=pts.filter(function(x,i){return i===0||Math.abs(x-pts[i-1])>1e-7*Math.max(1,Math.abs(x));});
+    var bounds=[-Infinity].concat(pts,[Infinity]),segs=[],selected=[];
+    var weak=(e.sign==="\u2265"||e.sign==="\u2264");
     for(var i=0;i<bounds.length-1;i++){
-      var mid;
-      if(bounds[i]===-Infinity) mid=bounds[i+1]-1;
-      else if(bounds[i+1]===Infinity) mid=bounds[i]+1;
-      else mid=(bounds[i]+bounds[i+1])/2;
+      var lo=bounds[i],hi=bounds[i+1];
+      var mid=!isFinite(lo)&&!isFinite(hi)?0:!isFinite(lo)?hi-Math.max(1,Math.abs(hi)):!isFinite(hi)?lo+Math.max(1,Math.abs(lo)):(lo+hi)/2;
       var val=polyEval(coeffs,mid);
-      var ok=(e.sign===">"?val>0:(e.sign==="<"?val<0:(e.sign==="\u2265"?val>=0:val<=0)));
+      var ok=(e.sign===">"||e.sign==="\u2265")?val>0:val<0;
+      selected.push(ok);
       if(ok){
-        var lo=bounds[i]===-Infinity?null:bounds[i];
-        var hi=bounds[i+1]===Infinity?null:bounds[i+1];
-        segs.push([lo,hi]);
+        var previous=segs[segs.length-1];
+        if(weak&&previous&&previous[1]===lo) previous[1]=hi;
+        else segs.push([lo,hi]);
       }
     }
-    var weak=(e.sign==="\u2265"||e.sign==="\u2264");
-    var ltOp=weak?"\u2264":"<", gtOp=weak?"\u2265":">";
-    function fmtLo(v){ return v===null?null:fmtReal(v); }
-    if(!segs.length){ e.result="No solution"; }
-    else e.result=segs.map(function(sg){
-      var lo=fmtLo(sg[0]), hi=fmtLo(sg[1]);
-      if(lo===null) return "x "+ltOp+" "+hi;
-      if(hi===null) return "x "+gtOp+" "+lo;
-      return lo+" "+ltOp+" x "+ltOp+" "+hi;
-    }).join("  or  ");
+    // Non-strict inequalities also include roots with no adjacent interval.
+    if(weak) pts.forEach(function(x,i){if(!selected[i]&&!selected[i+1]) segs.push([x,x]);});
+    segs.sort(function(a,b){return a[0]-b[0];});
+    var ltOp=weak?"\u2264":"<",gtOp=weak?"\u2265":">";
+    e.result=segs.length?segs.map(function(sg){
+      var lo=sg[0],hi=sg[1];
+      if(!isFinite(lo)&&!isFinite(hi)) return "All real numbers";
+      if(lo===hi) return "x = "+fmtReal(lo);
+      if(!isFinite(lo)) return "x "+ltOp+" "+fmtReal(hi);
+      if(!isFinite(hi)) return "x "+gtOp+" "+fmtReal(lo);
+      return fmtReal(lo)+" "+ltOp+" x "+ltOp+" "+fmtReal(hi);
+    }).join("  or  "):"No solution";
   }catch(ex){ e.result=esc(ex.msg||"Math ERROR"); }
   render();
 }
@@ -3745,6 +4295,11 @@ function dispatch(id){
 
   var shifted=S.shift, alphaed=S.alpha;
   S.shift=false; S.alpha=false;
+  // Global menu shortcuts precede numeric cell editors, which otherwise eat
+  // the shifted digit as data (e.g. SHIFT+9 entered 9 instead of opening reset).
+  if(shifted&&(id==="7"||id==="8"||id==="9")){
+    openMenu(id==="7"?"CONST":id==="8"?"CONV":"RESET");return;
+  }
 
   if(S.mode==="STAT" && !S.stat.type){
     if(id==="1"){ S.stat.type="1var"; S.stat.rows=[[""],[""],[""],[""]]; S.stat.r=0; S.stat.c=0; render(); return; }
@@ -3760,7 +4315,7 @@ function dispatch(id){
   if(S.mode==="MATRIX" && S.matrix.edit){ if(handleMatrixEdit(id)) return; }
   if(S.mode==="VECTOR" && S.vector.edit){ if(handleVectorEdit(id)) return; }
   if(S.mode==="EQUATION" && S.eq.kind && !S.eq.coeff.length){
-    if(id>="1" && id<="4"){ eqSize(parseInt(id,10)); render(); return; }
+    if(id>="2" && id<="4"){ eqSize(parseInt(id,10)); render(); return; }
     if(id==="AC"){ setMode("EQUATION"); return; }
   }
   if(S.mode==="EQUATION" && S.eq.kind && S.eq.coeff.length){ if(handleEqEdit(id)) return; }
@@ -3782,7 +4337,7 @@ function dispatch(id){
       doDel(); render(); return;
     case "EQUALS":
       clearAfterAnswer();
-      if(shifted){ toggleExact(); return; }
+      if(shifted){ doEquals(true); return; }
       doEquals(); return;
     case "LEFT": leaveResultView(); moveLeft(); render(); return;
     case "RIGHT": leaveResultView(); moveRight(); render(); return;
@@ -3885,7 +4440,7 @@ function inputFuncAt(name){
 function toggleExact(){
   S.exact=!S.exact;
   if(S.resultShown){
-    try{ S.resultHTML=formatValue(S.ans); }catch(e){}
+    try{ S.resultHTML=formatResult(S.ans); }catch(e){}
   }
   render();
 }
@@ -3893,7 +4448,7 @@ function toggleFracForm(){
   S.fracForm=(S.fracForm==="mixed")?"improper":"mixed";
   S.exact=true;
   if(S.resultShown){
-    try{ S.resultHTML=formatValue(S.ans); }catch(e){}
+    try{ S.resultHTML=formatResult(S.ans); }catch(e){}
   }
   render();
 }
@@ -3901,7 +4456,7 @@ function doM(add){
   try{
     var v;
     if(S.resultShown && S.hasAns) v=S.ans;
-    else v=evaluateList(root);
+    else v=evaluateCalculation(root);
     v=isC(v)?v.re:v;
     S.M += add?v:-v;
     S.ans=v; S.hasAns=true; S.resultShown=true; S.resultHTML=fmtReal(S.M);
@@ -3998,7 +4553,8 @@ function loadHistory(){
    MATRIX and VECTOR. */
 function doOptionAction(id){
   if(S.mode==="COMPLEX" || S.mode==="CMPLX" || S.mode==="CALC"){
-    if(id==="abs"){ inputAbs(); }
+    if(S.mode==="CMPLX"&&(id==="complex_polar"||id==="complex_rect")){insertComplexFormat(id==="complex_polar"?"polar":"rect");}
+    else if(id==="abs"){ inputAbs(); }
     else if(id==="deriv"){ inputDeriv(); }
     else if(id==="intg"){ inputIntg(); }
     else if(id==="sum"){ inputSum(); }
@@ -4020,9 +4576,10 @@ function doOptionAction(id){
   }
   if(S.mode==="MATRIX"){ matrixAction(id); return; }
   if(S.mode==="VECTOR"){ vectorAction(id); return; }
+  if(S.mode==="TABLE"&&id==="exit"){setMode("CALC");return;}
   if(S.mode==="STAT"){
     if(id==="calc"){ try{ S.stat.results=statCalc(); }catch(e){ S.error=e.msg||"Math ERROR"; } render(); return; }
-    if(id==="clr"){ S.stat.rows=[["",""],["",""],["",""],["",""]]; S.stat.results=null; render(); return; }
+    if(id==="clr"){ S.stat.rows=[["",""],["",""],["",""],["",""]]; S.stat.results=null; S.stat.r=0; S.stat.c=0; S.stat.buf=null; render(); return; }
     return;
   }
   if(S.mode==="EQUATION"){
@@ -4109,6 +4666,10 @@ document.addEventListener("keydown",function(e){
   if(e.metaKey||e.ctrlKey||e.altKey) return;
   /* mid-composition keys belong to the input method, not the calculator */
   if(e.isComposing||e.keyCode===229) return;
+  var menuButton=e.target&&e.target.closest?e.target.closest("[data-mi]"):null;
+  if(S.menu&&menuButton&&(e.key==="Enter"||e.key===" ")){
+    e.preventDefault();S.menu.index=Number(menuButton.getAttribute("data-mi"));selectMenuItem();return;
+  }
   var k=e.key;
   /* a few virtual keyboards report the keypad keys with an empty key, so fall
      back to the legacy keyCode for those */
@@ -4160,7 +4721,7 @@ S.resultHTML="";
 (function initSeed(){ root.length=0; resetCursor(); })();
 render();
 
-window.__calc = { S:S, dispatch:function(id){ dispatch(id); }, getExpr:function(){ return root; }, getCursor:function(){ var c=cur(); return {depth:stack.length,pos:c.pos,slot:c.slot||null,node:c.node?c.node.t:null,path:stack.map(function(f){ return f.slot||"root"; })}; }, setExpr:function(a){ root=a; resetCursor(); }, evalExpr:function(){ return evaluateList(root); }, fmt:function(v){ return formatValue(v); }, _toFrac:function(x){ return toFrac(x,10000); }, _isInt:isInt };
+window.__calc = { S:S, dispatch:function(id){ dispatch(id); }, getExpr:function(){ return root; }, getCursor:function(){ var c=cur(); return {depth:stack.length,pos:c.pos,slot:c.slot||null,node:c.node?c.node.t:null,path:stack.map(function(f){ return f.slot||"root"; })}; }, setExpr:function(a){ root=a; resetCursor(); }, evalExpr:function(){ return evaluateCalculation(root); }, fmt:function(v){ return formatValue(v); }, _toFrac:function(x){ return toFrac(x,10000); }, _isInt:isInt };
 
 /* Test hook: ?keys=1%20ADD%202 replays a key sequence on load so the page can be
    captured headlessly in any state. Harmless in normal use. */

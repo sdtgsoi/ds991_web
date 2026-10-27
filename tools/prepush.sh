@@ -63,7 +63,8 @@ if [ "$RUN_TESTS" -eq 1 ]; then
       echo "      -> fix the failing suites before pushing"
     fi
   else
-    echo "      node not found - skipped"
+    fail=1
+    echo "      node not found - cannot verify tests"
   fi
 else
   step "2/3  regression suites (skipped via --no-test)"
@@ -75,11 +76,16 @@ branch="$(git rev-parse --abbrev-ref HEAD)"
 upstream="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
 
 if [ -z "$upstream" ]; then
-  echo "      '$branch' has no upstream - the first push will need -u"
+  fail=1
+  echo "      '$branch' has no upstream - remote verification requires an upstream"
 else
   remote="$(git config "branch.$branch.remote" || echo origin)"
   if git fetch --quiet "$remote" 2>/dev/null; then
     counts="$(git rev-list --left-right --count "$upstream...HEAD" 2>/dev/null || echo "")"
+    if [[ ! "$counts" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]]; then
+      echo "      cannot compare upstream and HEAD" >&2
+      exit 1
+    fi
     behind="${counts%%[[:space:]]*}"
     ahead="${counts##*[[:space:]]}"
     echo "      $branch vs $upstream: $((${ahead:-0})) to push, $((${behind:-0})) to pull"
@@ -88,19 +94,29 @@ else
       echo "      -> the remote has commits you do not have; pull or merge before pushing"
       echo "         (this is what causes the non-fast-forward rejection)"
     fi
-    if git status --porcelain | grep -q .; then
-      fail=1
-      echo "      note: you have uncommitted changes - commit them first"
-    fi
   else
+    fail=1
     echo "      git fetch failed (offline?) - could not check the remote"
   fi
+fi
+
+# A clean tree is required even when there is no upstream or fetch fails.
+if ! tree_status="$(git status --porcelain)"; then
+  fail=1
+  echo "      git status failed - cannot verify working tree"
+elif [ -n "$tree_status" ]; then
+  fail=1
+  echo "      uncommitted changes - commit them before pushing"
 fi
 
 # --- summary ------------------------------------------------------------------
 printf '\n'
 if [ "$fail" -eq 0 ]; then
-  echo "prepush: all clear, go ahead and push"
+  if [ "$RUN_TESTS" -eq 1 ]; then
+    echo "prepush: all checks passed"
+  else
+    echo "prepush: sync and remote checks passed; tests explicitly skipped"
+  fi
 else
   echo "prepush: NOT ready to push (see the notes above)"
 fi

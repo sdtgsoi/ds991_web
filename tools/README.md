@@ -1,74 +1,72 @@
-# tools/
+# Test and inspection tools
 
-Test and inspection helpers for `../ds991.html`. Plain Node, no dependencies,
-no build step.
+Node.js **22+**, no third-party dependencies. Run commands below from the repository
+root. The HTML is self-contained; the five `src/*.js` source files are embedded by `./sync.sh`.
+See [testing and release checks](../docs/testing.md) for acceptance boundaries.
 
-`../ds991.html` is the source of truth; `../sync.sh` (in the repository root,
-next to the page) copies it to `index.html` for GitHub Pages.
+## Regression suites
 
-## Suites
-
-| file | covers |
+| File | Coverage |
 |---|---|
-| `cursor_test.js` | per-digit LEFT/RIGHT, UP/DOWN slot offsets, DEL, fraction order |
-| `fraction_test.js` | fraction templates, absorbing a preceding number, evaluation |
-| `dpad_test.js` | UP/DOWN across every template type, caret never stranded |
-| `power_test.js` | exponent matrix: input I1-I11, delete D1-D11, navigation N1-N6, eval/serialization |
-| `regression_test.js` | every calculation mode plus editing, memory and history |
-| `ui_test.js` | caret/answer display, key layout, shortcuts, integral and log markup |
-| `run_tests.js` | runs all of the above; exits non-zero on any failure |
+| `calc_optn_test.js` | Calculate OPTN categories, six hyperbolic functions, explicit angle suffixes, eleven engineering prefixes and editing/navigation |
+| `complex_optn_test.js` | Complex OPTN pages, four functions, per-expression output conversion, numeric Ans, history, CALC and editing/error paths |
+| `menu_test.js` | menu pages/back navigation, settings, reset confirmation, 47 constants, 40 conversions, mode entry and cell editors |
+| `math_test.js` | standalone polynomial roots, scaling, real nth roots, invalid inputs |
+| `cursor_test.js` | digit offsets, LEFT/RIGHT, UP/DOWN, deletion, fraction order |
+| `fraction_test.js` | fraction templates, preceding-number absorption, evaluation |
+| `dpad_test.js` | UP/DOWN across templates, caret paths |
+| `power_test.js` | exponent input, deletion, navigation, evaluation and serialization |
+| `regression_test.js` | calculation modes, memory/history, nonmonic polynomials, negative cube root and inequality boundaries |
+| `ui_test.js` | caret/answer display, layout markup, keyboard handling, integral and logarithm markup |
+| `run_tests.js` | runs all ten suites, nonzero exit on any failure |
 
 ```bash
-node tools/run_tests.js      # run all suites
-../sync.sh                   # then publish ds991.html -> index.html
+./sync.sh
+node tools/run_tests.js
+./sync.sh --check
 ```
 
-## Pre-push check
+The eight page suites evaluate the embedded script against a small DOM shim and drive
+`window.__calc.dispatch`. They test behavior and emitted markup, not browser layout.
+The numerical suite requires `src/math-core.js` directly and needs no DOM.
+
+## Publishing guard
 
 ```bash
-./prepush.sh            # sync check + all suites + "is the remote ahead?"
-./prepush.sh --no-test  # quicker: skip the suites
+node tools/sync_test.js    # source drift and invalid-publication scenarios
+node tools/prepush_test.js # isolated failure/success scenarios; no network
+./tools/prepush.sh         # sync + regression + live upstream check + clean tree
+./tools/prepush.sh --no-test
 ```
 
-Exits non-zero unless all three are true:
+The guard fails when Node, upstream, fetch, commit comparison or working-tree checks
+are unavailable, as well as for test failures or a remote ahead of HEAD. The
+`--no-test` option reports explicitly that tests were skipped. It is a manual check,
+not an installed Git hook. Commit reviewed changes before expecting a clean-tree pass.
 
-1. `ds991.html` and `index.html` are in sync (delegates to `../sync.sh --check`),
-2. every suite passes,
-3. the remote has no commits you are missing and your tree is clean.
+## Chrome tools
 
-Step 3 is the one that catches a `non-fast-forward` rejection before you try to
-push; step 1 catches the "forgot to sync" case that otherwise forces an amend.
-
-## How the Node suites work
-
-`ds991.html` is one self-contained page. Each suite extracts its `<script>`
-block, evaluates it inside `vm` against a ~30-line DOM shim, and then drives the
-**real** dispatcher (`window.__calc.dispatch`) with key sequences. Assertions are
-made against the rendered LCD HTML converted to text by `render_text.js`, so
-they stay readable:
-
-```
-(12|)/(☐)      caret sits after "12" in the numerator, denominator still empty
-(12)/(34|)     caret at the end of the denominator
-[0..1]         integral limits, lower..upper
-```
-
-These suites check logic and the emitted markup. They cannot check *visual*
-layout - use the screenshot helper for that.
-
-## Inspection helpers
+Chrome/Chromium is discovered in common install locations or Linux PATH. Override
+with `CHROME_PATH=/path/to/chrome`. The shared `browser.js` uses current Headless,
+a fresh temporary profile, random localhost ports, CDP timeouts and cleanup on exit.
+Do not disable the Chrome sandbox unless required by a restricted container
+(`CHROME_NO_SANDBOX=1`).
 
 ```bash
-# screenshot any state; keys are replayed via the page's ?keys= hook
-../tools/shot.sh out.png "INTG 0 RIGHT 1 RIGHT XKEY"
-
-# ask the browser for an element's COMPUTED style (catches CSS cascade bugs)
-node computed.js '.key[data-key="MENU"] .sl.right'
-
-# element geometry: is anything overflowing or overlapping?
-node rects.js --keys "INTG XKEY SQR" ".lcd" ".bigop" ".lim.tall"
+node tools/browser_test.js
+./tools/shot.sh /tmp/ds991.png "2 POW 3" 390 940
+node tools/computed.js '.key[data-key="MENU"] .sl.right'
+node tools/rects.js --keys "INTG XKEY" '.lcd' '.bigop' '.lim.tall'
+node tools/eval_page.js --keys "2 ADD 3 EQUALS" 'window.__calc.S.ans'
 ```
 
-`computed.js` and `rects.js` exist because a rule can look correct in the source
-and still lose on specificity or overflow its container - reading the browser's
-own computed style and bounding rectangles is the only way to be sure.
+`browser_test.js` covers startup, keyboard dispatch, key construction, numeric
+regressions, visible inequality symbols and calculator bounds at 390/1280 widths.
+It also checks menu bounds, paging and pointer/click selection, including all
+Calculate OPTN submenus and the two-column hyperbolic layout.
+Add `--screenshots /tmp/ds991-menu-review` to save menu screenshots.
+It is a smoke test; screenshots and full cross-browser/real-touch verification
+remain separate tasks. The screenshot helper exits nonzero on browser failure.
+
+`embed_sources.js --check|--write` is normally called by `sync.sh`; edit the corresponding
+source file instead of a generated HTML block.

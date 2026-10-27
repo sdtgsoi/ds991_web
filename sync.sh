@@ -2,11 +2,11 @@
 #
 # sync.sh - keep index.html identical to ds991.html
 #
-# ds991.html is the SOURCE OF TRUTH. Edit only that file; index.html exists
-# solely because GitHub Pages serves index.html from the repository root.
+# Edit the page shell in ds991.html and generated regions in src/*.js.
+# index.html is the published copy served by GitHub Pages.
 #
 # Usage:
-#   ./sync.sh            copy ds991.html -> index.html, then report
+#   ./sync.sh            embed src/*.js, validate, copy to index.html
 #   ./sync.sh --check    report whether the two are in sync; change nothing
 #   ./sync.sh --help
 #
@@ -36,6 +36,14 @@ case "${1:-}" in
 esac
 
 [ -f "$SRC" ] || { echo "sync: missing source file: $SRC" >&2; exit 2; }
+
+# The page stays self-contained; maintained sources are embedded before copying.
+command -v node >/dev/null 2>&1 || { echo "sync: Node.js 22+ is required" >&2; exit 1; }
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  node "$ROOT/tools/embed_sources.js" --check
+else
+  node "$ROOT/tools/embed_sources.js" --write
+fi
 
 # --- validate the source before trusting it -----------------------------------
 # A truncated or half-written page must never be propagated to the published

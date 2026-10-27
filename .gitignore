@@ -18,6 +18,24 @@
 !tools/
 !tools/*
 
+# --- maintained source, documentation and CI ---------------------------------
+!src/
+!src/*.js
+!docs/
+!docs/*.md
+!991-docs/
+!991-docs/*.md
+!991-docs/*.pdf
+!991-docs/*.jpg
+!991-docs/*.txt
+!temp-docs/
+!temp-docs/*.md
+!q-tests/
+!q-tests/*.md
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
+
 # --- keep ignoring the usual junk --------------------------------------------
 # (these come after the white-list so they win)
 .DS_Store

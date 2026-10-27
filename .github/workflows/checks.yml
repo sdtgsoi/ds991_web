@@ -1,0 +1,24 @@
+name: Project checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check embedded sources and published HTML
+        run: ./sync.sh --check
+      - name: Verify source synchronization guards
+        run: node tools/sync_test.js
+      - name: Run regression suites
+        run: node tools/run_tests.js
+      - name: Check publishing guard failure paths
+        run: node tools/prepush_test.js
+      - name: Browser smoke tests
+        run: node tools/browser_test.js
