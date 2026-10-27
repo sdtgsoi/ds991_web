@@ -4,9 +4,9 @@
 
 ## 依据与原件
 
-- [CN X 中文手册 V02](../991-docs/fx-991CN_X_CN.pdf)，RJA530830-001V02，印刷页 33–34（PDF 第 34–35 页）：四项函数的编号，以及 `OPTN ↓ 1/2` 两种输出命令。本次从 [CASIO 官方 PDF](https://www.casio.com/content/dam/casio/global/support/manuals/calculators/pdf/004-zh-cn/f/fx-991CN_X_B_CN.pdf) 下载；早先审计使用 V01，其对应印刷页为 34–35。
-- [用户提供的 EX 英文手册](<../991-docs/manual casio fx-570_991EX_EN.pdf>)，印刷页 18（PDF 第 19 页）：交叉核对通用函数和输出命令，不移植 EX 独有模式。
-- [CASIO 官方 EX 快速指南原件](../991-docs/fx-991EX_Quick_Start_Guide_EN.pdf)，印刷页 11–12：有菜单截图，确认首页英文名称、单列四项及格式页两项。来源与校验值见 [引用材料目录](../991-docs/reference-materials.md)。
+- [CN X 中文手册 V02](https://www.casio.com/content/dam/casio/global/support/manuals/calculators/pdf/004-zh-cn/f/fx-991CN_X_B_CN.pdf)，RJA530830-001V02，印刷页 33–34（PDF 第 34–35 页）：四项函数的编号，以及 `OPTN ↓ 1/2` 两种输出命令。早先审计使用 V01，其对应印刷页为 34–35。
+- [EX 英文手册](https://www.casio.com/content/dam/casio/global/support/manuals/calculators/pdf/004-en/f/fx-570_991EX_EN.pdf)，印刷页 18（PDF 第 19 页）：交叉核对通用函数和输出命令，不移植 EX 独有模式。
+- [CASIO 官方 EX 快速指南](https://www.casio.com/content/dam/casio/local/us/cpd/pdf/Casio-fx-991EX-QSG.pdf)，印刷页 11–12：有菜单截图，确认首页英文名称、单列四项及格式页两项。本地资料目录 `991-docs/` 不纳入 Git。
 
 ## 菜单结构
 

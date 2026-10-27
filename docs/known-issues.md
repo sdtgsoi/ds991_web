@@ -1,6 +1,6 @@
 # 已知限制与兼容性
 
-更新于 2026-10-26。状态证据见 [功能表](../991-docs/06_function_inventory.md)。
+更新于 2026-10-26。功能状态与证据见本文、[菜单审计](menu-audit.md) 和 [测试文档](testing.md)。
 
 ## 数值行为
 
@@ -28,9 +28,9 @@
 
 ## 文档来源
 
-说明书和直接引用材料统一保存在 `991-docs/`，见 [引用材料目录](../991-docs/reference-materials.md)。CN X 官方 V02 是目标型号依据；EX 英文资料用于通用功能交叉核对，不能视为 CN X 全部功能的验收标准。`991-docs/01`、`02` 已依据这些资料更新为外观/按键规范并列明实现差异；`04`、`05` 是当前开发计划和维护指引，架构提案仍为建议。`temp-docs` 是指数设计历史，`q-tests` 是人工测试草案；规范、计划和历史资料均不能证明实机验收通过。
+说明书和直接引用材料可保存在本地 `991-docs/`，该目录不纳入 Git。[CN X 官方 V02](https://www.casio.com/content/dam/casio/global/support/manuals/calculators/pdf/004-zh-cn/f/fx-991CN_X_B_CN.pdf) 是目标型号依据；EX 英文资料用于通用功能交叉核对，不能视为 CN X 全部功能的验收标准。`temp-docs` 是指数设计历史，`q-tests` 是人工测试草案；规范、计划和历史资料均不能证明实机验收通过。
 
-文档核对新增的明确差异：真机没有 Z，变量 M 与独立存储器 M 是同一值；复数 i/∠ 真机入口为 ENG/SHIFT ENG，网页仍使用 ALPHA ENG/SHIFT RPAREN。Pol/Rec、÷R、Rnd、随机等部分面板标记尚未接入相应动作。详见 [按键与功能规范](../991-docs/02_keymap_and_functions.md)，本次文档更新没有修改这些代码行为。
+文档核对新增的明确差异：真机没有 Z，变量 M 与独立存储器 M 是同一值；复数 i/∠ 真机入口为 ENG/SHIFT ENG，网页仍使用 ALPHA ENG/SHIFT RPAREN。Pol/Rec、÷R、Rnd、随机等部分面板标记尚未接入相应动作，本次文档更新没有修改这些代码行为。
 
 ## 下一步
 

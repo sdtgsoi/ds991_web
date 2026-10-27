@@ -11,7 +11,7 @@
 
 以下页码按手册印刷页码。CN X PDF 的相关内容位于 PDF 第 9–14、58–59、69–70 页；EX 内容见印刷页 4–8、37、44。
 
-后续已找到并下载 [CASIO 官方 CN X V02](../991-docs/fx-991CN_X_CN.pdf)。上文保留初次审计的 V01 页码；复数专项使用 V02 pp.33–34，两版的部分页码不同。原件、EX 手册/指南、引用图片和数据表统一见 [引用材料目录](../991-docs/reference-materials.md)。
+后续已找到 [CASIO 官方 CN X V02](https://www.casio.com/content/dam/casio/global/support/manuals/calculators/pdf/004-zh-cn/f/fx-991CN_X_B_CN.pdf)。上文保留初次审计的 V01 页码；复数专项使用 V02 pp.33–34，两版的部分页码不同。本地原件保存在不纳入 Git 的 `991-docs/`。
 
 **型号差异：CN X 是 10 个主模式；EX 是 12 个。** 目前主模式集合及顺序符合 CN X：计算、复数、基数、矩阵、向量、统计、表格、方程/函数、不等式、比例。EX 的分布和电子表格不列为本项目缺失项。CN X 的语言设置应保留；EX 的 QR/电子表格相关选项不直接移植。
 

@@ -23,11 +23,8 @@
 !src/*.js
 !docs/
 !docs/*.md
-!991-docs/
-!991-docs/*.md
-!991-docs/*.pdf
-!991-docs/*.jpg
-!991-docs/*.txt
+# Local reference materials and notes are never tracked.
+991-docs/
 !temp-docs/
 !temp-docs/*.md
 !q-tests/

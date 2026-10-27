@@ -9,7 +9,7 @@
 - [CASIO 官方 fx-991EX 快速指南](https://www.casio.com/content/dam/casio/local/us/cpd/pdf/Casio-fx-991EX-QSG.pdf)，印刷页 10：工程输入示例确认 `OPTN 3 6` 为 k，`OPTN 3 7` 为 M。
 - [实机双曲函数菜单原始照片](https://www.a2life.info/w/wp-content/uploads/2020/10/20230815_104458-1024x1024.jpg)：EX 实机，作为两列三行、六项编号的交叉图示；不能据此声称完成了 CN X 逐像素验收。
 
-上述 EX 手册、快速指南和照片现已统一保存在 `991-docs/`；另已下载官方 CN X V02。版本差异、本地入口和校验值见 [引用材料目录](../991-docs/reference-materials.md)。本说明保留原先 V01 页码。
+上述资料可保存在本地 `991-docs/`（该目录不纳入 Git）；本说明保留原先 V01 页码。另有 [官方 CN X V02](https://www.casio.com/content/dam/casio/global/support/manuals/calculators/pdf/004-zh-cn/f/fx-991CN_X_B_CN.pdf)，两版部分页码不同。
 
 ## 实际菜单结构
 

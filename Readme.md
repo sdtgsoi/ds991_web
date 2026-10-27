@@ -70,8 +70,8 @@ again.
 ## Repository layout
 
 `.gitignore` allows maintained HTML, numerical source, tools, Markdown documentation
-and `.github/workflows/checks.yml`. Reference PDFs, photos and data tables are
-kept in `991-docs/`. Local screenshots, swap files, scratch HTML and
+and `.github/workflows/checks.yml`. Reference materials and notes in `991-docs/`
+are local-only and excluded from Git. Local screenshots, swap files, scratch HTML and
 the legacy `q-tests/run_all_tests.js` remain ignored.
 New source directories/extensions must be explicitly allowed before committing.
 
@@ -79,18 +79,13 @@ Documentation entry points:
 
 - [Calculate-mode OPTN menu](docs/calculate-optn.md)
 - [Complex-mode OPTN menu](docs/complex-optn.md)
-- [Reference manuals and source materials](991-docs/reference-materials.md)
 - [Menu comparison and repair status](docs/menu-audit.md)
-- [Current architecture](991-docs/03_architecture.md)
-- [Implementation status and test evidence](991-docs/06_function_inventory.md)
 - [Testing and release checks](docs/testing.md)
 - [Numerical limits and known issues](docs/known-issues.md)
 - [Changes](docs/changes.md)
 
-`991-docs/01` and `02` contain the reference-based visual/key specifications and
-explicit implementation differences. `04` and `05` provide the current development
-plan and AI maintenance guide; `03_architecture_proposal.md` remains a proposal.
-The manuals and page index are linked from `991-docs/reference-materials.md`.
+When available locally, `991-docs/` contains reference materials, specifications,
+architecture notes and development plans; it is not included in a fresh clone.
 `temp-docs/` preserves exponent editing history; `q-tests/` preserves manual test
 ideas. Plans, specifications and historical notes are not acceptance results.
 
