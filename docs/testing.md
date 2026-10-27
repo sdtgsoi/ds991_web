@@ -12,6 +12,7 @@ Node.js 22+；不需要 npm install。Chrome/Chromium 用于真实浏览器工�
 node tools/run_tests.js
 node tools/sync_test.js
 node tools/prepush_test.js
+node tools/browser_lifecycle_test.js
 node tools/browser_test.js
 ```
 
@@ -25,6 +26,7 @@ node tools/browser_test.js
 | 页面逻辑 | `tools/run_tests.js` | 上项及九组菜单/编辑、导航、模式、渲染字符串、键盘事件模拟测试 |
 | 源码同步保护 | `tools/sync_test.js` | 五个源码的漂移检测、只读检查、无效脚本/缺失标记不能覆盖发布副本 |
 | 发布保护 | `tools/prepush_test.js` | 隔离假 Git 环境验证 fetch 失败、无 upstream、脏目录、落后、比较失败、Node 缺失等非零退出，以及显式跳过测试提示 |
+| 浏览器生命周期 | `tools/browser_lifecycle_test.js` | 真实子进程正常退出和强制终止、临时目录清理重试及永久错误 |
 | 真实浏览器 | `tools/browser_test.js` | 390/1280 宽度启动、按钮构建、奇次根、多项式、不等式可见符号、真实 DOM 键盘事件、计算器横向边界和未捕获脚本异常 |
 
 浏览器检查使用合成键盘事件；尚不等同于系统 IME、真机触摸或全套视觉回归。DOM 模拟套件断言行为和生成字符串，不能证明 CSS 排版正确。
@@ -38,7 +40,7 @@ node tools/eval_page.js --keys "2 ADD 3 EQUALS" 'window.__calc.S.ans'
 ./tools/shot.sh /tmp/ds991.png "2 POW 3" 390 940
 ```
 
-这些工具共用 `tools/browser.js`：现代 Headless、随机端口、临时配置、启动/命令超时和退出清理。异常返回非零状态。默认使用浏览器沙箱；受限容器确需关闭时才设置 `CHROME_NO_SANDBOX=1`。
+这些工具共用 `tools/browser.js`：现代 Headless、随机端口、临时配置、启动/命令超时和退出清理。Chrome 优先通过 CDP 正常关闭，超时再终止并等待进程关闭；删除临时配置时对短暂占用进行有限重试。操作和清理都失败时保留两个错误。默认使用浏览器沙箱；受限容器确需关闭时才设置 `CHROME_NO_SANDBOX=1`。
 
 ## 提交与发布
 
@@ -65,3 +67,7 @@ node tools/eval_page.js --keys "2 ADD 3 EQUALS" 'window.__calc.S.ans'
 - 源码及工具 JavaScript 语法检查、HTML 同步、维护文档本地链接和 `git diff --check` 通过。
 
 本次没有提交或推送变更，没有执行线上部署。真实远端检查及 GitHub Actions 运行结果需在提交/推送后确认。
+
+## 浏览器清理修复验证（2026-10-26）
+
+针对 Actions 的 `ENOTEMPTY` 清理错误，新增 `browser_lifecycle_test.js`，使用真实子进程验证正常关闭与强制终止，使用临时目录及模拟删除错误验证短暂失败重试、重试耗尽和非重试错误。真实 Chrome 冒烟测试补充了动作抛错后的清理路径。本机 macOS、Node.js 24.15.0、Chrome 156 下上述检查、十组回归、同步保护和十个发布保护场景均通过；修改后的 Linux/Node 22 Actions 尚未运行。

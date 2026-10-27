@@ -35,6 +35,7 @@ The numerical suite requires `src/math-core.js` directly and needs no DOM.
 ```bash
 node tools/sync_test.js    # source drift and invalid-publication scenarios
 node tools/prepush_test.js # isolated failure/success scenarios; no network
+node tools/browser_lifecycle_test.js # Chrome shutdown and profile cleanup failures
 ./tools/prepush.sh         # sync + regression + live upstream check + clean tree
 ./tools/prepush.sh --no-test
 ```
@@ -49,6 +50,9 @@ not an installed Git hook. Commit reviewed changes before expecting a clean-tree
 Chrome/Chromium is discovered in common install locations or Linux PATH. Override
 with `CHROME_PATH=/path/to/chrome`. The shared `browser.js` uses current Headless,
 a fresh temporary profile, random localhost ports, CDP timeouts and cleanup on exit.
+It requests Chrome's graceful shutdown, waits for the process to close, escalates
+termination if needed and retries transient profile deletion failures. Cleanup errors
+remain failures; if the browser operation also failed, both errors are reported.
 Do not disable the Chrome sandbox unless required by a restricted container
 (`CHROME_NO_SANDBOX=1`).
 

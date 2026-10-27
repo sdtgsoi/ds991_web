@@ -2,6 +2,7 @@
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const http=require('node:http');
 const {spawn,spawnSync}=require('node:child_process');
+const {stopChrome,removeProfile}=require('./browser_lifecycle.js');
 function chromePath(){
   if(process.env.CHROME_PATH) return process.env.CHROME_PATH;
   const candidates=process.platform==='darwin'?['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/Applications/Chromium.app/Contents/MacOS/Chromium']:process.platform==='win32'?[
@@ -27,7 +28,7 @@ async function withPage(keys,action,{width=520,height=940}={}){
     res.setHeader('Content-Type','text/html; charset=utf-8');
     fs.createReadStream(path.join(root,pathname.slice(1))).on('error',()=>res.destroy()).pipe(res);
   });
-  let child,socket,spawnError,stderr='',sequence=0;
+  let child,childClosed,socket,spawnError,primaryError,stderr='',sequence=0;
   const pending=new Map(),errors=[];
   function send(method,params={}){
     return new Promise((resolve,reject)=>{
@@ -48,12 +49,13 @@ async function withPage(keys,action,{width=520,height=940}={}){
       '--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${profile}`,'about:blank'];
     if(process.env.CHROME_NO_SANDBOX==='1') args.unshift('--no-sandbox');
     child=spawn(chrome,args,{stdio:['ignore','ignore','pipe']});
+    childClosed=new Promise(resolve=>child.once('close',resolve));
     child.once('error',e=>{spawnError=e;});
     child.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-4000);});
     let devtoolsPort;
     for(let i=0;i<100;i++){
       if(spawnError) throw spawnError;
-      if(child.exitCode!==null) throw new Error('Chrome exited: '+stderr);
+      if(child.exitCode!==null||child.signalCode!==null) throw new Error('Chrome exited: '+stderr);
       try{devtoolsPort=fs.readFileSync(path.join(profile,'DevToolsActivePort'),'utf8').split('\n')[0];break;}catch{}
       await delay(100);
     }
@@ -85,14 +87,25 @@ async function withPage(keys,action,{width=520,height=940}={}){
     const result=await action({evaluate,send,errors});
     if(errors.length) throw new Error(errors.join('\n'));
     return result;
+  }catch(error){
+    primaryError=error;
+    throw error;
   }finally{
+    const cleanupErrors=[];
     for(const job of pending.values()) clearTimeout(job.timer);
-    if(socket) socket.close();
-    if(child&&child.exitCode===null&&child.pid){
-      await new Promise(resolve=>{child.once('exit',resolve);child.kill();setTimeout(()=>{if(child.exitCode===null)child.kill('SIGKILL');resolve();},2000).unref();});
+    try{
+      await stopChrome(child,childClosed,{requestClose:socket&&socket.readyState===WebSocket.OPEN
+        ?()=>socket.send(JSON.stringify({id:++sequence,method:'Browser.close'})):null});
+    }catch(error){cleanupErrors.push(error);}
+    try{if(socket) socket.close();}catch(error){cleanupErrors.push(error);}
+    try{await new Promise(resolve=>server.close(resolve));}catch(error){cleanupErrors.push(error);}
+    try{await removeProfile(profile);}catch(error){cleanupErrors.push(error);}
+    if(cleanupErrors.length){
+      if(primaryError) cleanupErrors.unshift(primaryError);
+      if(cleanupErrors.length===1) throw cleanupErrors[0];
+      throw new AggregateError(cleanupErrors,'Browser operation or cleanup failed:\n'+
+        cleanupErrors.map(error=>error.stack||String(error)).join('\n'));
     }
-    await new Promise(resolve=>server.close(resolve));
-    fs.rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:100});
   }
 }
 function parseArgs(){

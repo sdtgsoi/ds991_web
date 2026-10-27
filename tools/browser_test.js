@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Real browser smoke tests, separate from the dependency-free DOM-shim suites.
 const assert=require('node:assert/strict');
-const fs=require('node:fs'),path=require('node:path');
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const artifactDir=process.argv[2]==='--screenshots'?process.argv[3]:null;
 if(artifactDir)fs.mkdirSync(artifactDir,{recursive:true});
 const {withPage}=require('./browser.js');
@@ -124,5 +124,17 @@ const {withPage}=require('./browser.js');
       assert.equal(complexClick.format,'rect');assert.equal(complexClick.error,null);
     },{width,height:940});
     console.log('PASS browser width '+width);
+  }
+  await assert.rejects(withPage('',async()=>{throw new Error('intentional browser action failure');}),
+    /intentional browser action failure/);
+  console.log('PASS browser action failure cleanup');
+  const originalChromePath=process.env.CHROME_PATH;
+  try{
+    process.env.CHROME_PATH=path.join(os.tmpdir(),'ds991-nonexistent-chrome-'+process.pid);
+    await assert.rejects(withPage('',async()=>{}),error=>error.code==='ENOENT');
+    console.log('PASS browser startup failure cleanup');
+  }finally{
+    if(originalChromePath===undefined) delete process.env.CHROME_PATH;
+    else process.env.CHROME_PATH=originalChromePath;
   }
 })().catch(e=>{console.error(e.stack);process.exitCode=1;});

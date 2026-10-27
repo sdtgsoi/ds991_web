@@ -20,5 +20,7 @@ jobs:
         run: node tools/run_tests.js
       - name: Check publishing guard failure paths
         run: node tools/prepush_test.js
+      - name: Check browser shutdown and cleanup
+        run: node tools/browser_lifecycle_test.js
       - name: Browser smoke tests
         run: node tools/browser_test.js

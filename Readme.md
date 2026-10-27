@@ -41,6 +41,7 @@ published copy.
 node tools/run_tests.js   # 3. run the suites
 node tools/sync_test.js
 node tools/prepush_test.js
+node tools/browser_lifecycle_test.js
 node tools/browser_test.js # Chrome/Chromium required
 git add -A && git commit -m "..."
 git push
@@ -209,8 +210,8 @@ problems (a rule can look correct in the source and still lose on specificity).
 ## Continuous integration
 
 `.github/workflows/checks.yml` runs on pushes and pull requests: embedded sources /
-HTML synchronization, ten regression suites, publishing guard scenarios and
-real Chrome smoke tests at phone and desktop widths. It checks changes without
+HTML synchronization, ten regression suites, publishing guard scenarios, browser
+lifecycle checks and real Chrome smoke tests at phone and desktop widths. It checks changes without
 publishing the site. GitHub Actions execution is confirmed only after pushing.
 
 # TODO list:
