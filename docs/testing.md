@@ -31,6 +31,8 @@ node tools/browser_test.js
 
 浏览器检查使用合成键盘事件；尚不等同于系统 IME、真机触摸或全套视觉回归。DOM 模拟套件断言行为和生成字符串，不能证明 CSS 排版正确。
 
+幂编辑专项 `node tools/power_test.js` 覆盖输入上下文、指数槽删除、边界两侧、幂塔左右周期、上下导航、右结合求值和 JSON 快照。渲染检查主要是源码断言，截图与 DOM 几何测量仍需真实浏览器；操作案例和调试入口见 [幂编辑](power-editing.md)。
+
 ## 浏览器检查工具
 
 ```bash
@@ -70,4 +72,4 @@ node tools/eval_page.js --keys "2 ADD 3 EQUALS" 'window.__calc.S.ans'
 
 ## 浏览器清理修复验证（2026-10-26）
 
-针对 Actions 的 `ENOTEMPTY` 清理错误，新增 `browser_lifecycle_test.js`，使用真实子进程验证正常关闭与强制终止，使用临时目录及模拟删除错误验证短暂失败重试、重试耗尽和非重试错误。真实 Chrome 冒烟测试补充了动作抛错后的清理路径。本机 macOS、Node.js 24.15.0、Chrome 156 下上述检查、十组回归、同步保护和十个发布保护场景均通过；修改后的 Linux/Node 22 Actions 尚未运行。
+针对 Actions 的 `ENOTEMPTY` 清理错误，新增 `browser_lifecycle_test.js`，使用真实子进程验证正常关闭与强制终止，使用临时目录及模拟删除错误验证短暂失败重试、重试耗尽和非重试错误。真实 Chrome 冒烟测试补充了动作抛错后的清理路径。本机 macOS、Node.js 24.15.0、Chrome 156 下上述检查、十组回归、同步保护和十个发布保护场景均通过；后续 [GitHub Actions](https://github.com/sdtgsoi/ds991_web/actions/runs/40545696597) 的 Linux / Node 22 项目检查也已通过。该记录不代表后续提交自动通过。

@@ -24,9 +24,6 @@
 !docs/
 !docs/*.md
 # Local reference materials and notes are never tracked.
-991-docs/
-!temp-docs/
-!temp-docs/*.md
 !q-tests/
 !q-tests/*.md
 !.github/

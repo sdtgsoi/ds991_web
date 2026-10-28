@@ -22,13 +22,13 @@
 ## 浏览器与工具
 
 - 本次使用本机 Chrome 在 390 和 1280 CSS 像素宽度做冒烟检查；没有把它等同于 Android/iOS 真机触摸测试。
-- Safari、Firefox、移动浏览器、深层幂布局、缩放及屏幕阅读器未完成完整验收。
+- Safari、Firefox、移动浏览器、深层幂布局、缩放及屏幕阅读器未完成完整验收。幂塔光标可见性使用有限位移，不保证任意深度均完整显示；设计和测试边界见 [幂编辑](power-editing.md)。
 - 开发工具要求 Node.js 22+ 与 Chrome/Chromium。可用 `CHROME_PATH` 指定可执行文件。启动无头浏览器需要进程权限与 localhost 监听权限。
 - 工具只监听 127.0.0.1，使用临时浏览器配置和随机端口，结束后清理。每次运行创建自己的浏览器与服务。
 
 ## 文档来源
 
-说明书和直接引用材料可保存在本地 `991-docs/`，该目录不纳入 Git。[CN X 官方 V02](https://www.casio.com/content/dam/casio/global/support/manuals/calculators/pdf/004-zh-cn/f/fx-991CN_X_B_CN.pdf) 是目标型号依据；EX 英文资料用于通用功能交叉核对，不能视为 CN X 全部功能的验收标准。`temp-docs` 是指数设计历史，`q-tests` 是人工测试草案；规范、计划和历史资料均不能证明实机验收通过。
+说明书和直接引用材料可保存在本地 `991-docs/`，该目录不纳入 Git。[CN X 官方 V02](https://www.casio.com/content/dam/casio/global/support/manuals/calculators/pdf/004-zh-cn/f/fx-991CN_X_B_CN.pdf) 是目标型号依据；EX 英文资料用于通用功能交叉核对，不能视为 CN X 全部功能的验收标准。`temp-docs` 是指数设计历史，已将仍适用的内容整理至 [幂编辑](power-editing.md) 和 [架构](architecture.md)；`q-tests` 是人工测试草案。规范、计划和历史资料均不能证明实机验收通过。
 
 文档核对新增的明确差异：真机没有 Z，变量 M 与独立存储器 M 是同一值；复数 i/∠ 真机入口为 ENG/SHIFT ENG，网页仍使用 ALPHA ENG/SHIFT RPAREN。Pol/Rec、÷R、Rnd、随机等部分面板标记尚未接入相应动作，本次文档更新没有修改这些代码行为。
 
